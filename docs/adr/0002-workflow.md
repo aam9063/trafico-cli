@@ -80,22 +80,28 @@ natural para proponerlo, no para ejecutarlo.
 `gentle-ai doctor` → 6 comprobaciones OK, 0 fallos, 5 avisos, estado `degraded`. Avisos y qué
 hacer con ellos:
 
-1. **`tool:gentle-ai` duplicado en PATH** (`C:\Users\alber\go\bin\gentle-ai.exe` y
-   `C:\Users\alber\AppData\Local\gentle-ai\bin\gentle-ai.exe`). Remedio: dejar una sola copia.
-   Impacto en este repo: ninguno, pero dos binarios distintos con el mismo nombre es una fuente de
-   confusión al depurar.
-2. **`tool:engram` duplicado** (`AppData\Local\engram\bin` y `go\bin`). Mismo remedio.
-3. **`installed:asset_version`**: los assets instalados se configuraron con gentle-ai 4.2.0 y el
-   binario en uso es 4.3.1. Remedio exacto: `gentle-ai sync`. **No se ejecutó en esta tarea**:
-   `sync` reescribe assets gestionados y puede tocar `AGENTS.md`, así que es una decisión del
-   propietario del entorno, no del repo. Los avisos 1, 2 y 3 comparten causa (una instalación
-   antigua conviviendo con la nueva) y se resuelven juntos.
+1. **`tool:gentle-ai` duplicado en PATH** (`C:\Users\alber\go\bin\gentle-ai.exe` 4.3.1 y
+   `C:\Users\alber\AppData\Local\gentle-ai\bin\gentle-ai.exe` 2.1.5). Decisión del propietario
+   del entorno (2026-10-28): **se dejan las dos copias**. Riesgo aceptado: si el orden del PATH
+   cambia en otra terminal o en un IDE, se ejecutaría la 2.1.5 sin aviso. La copia buena (4.3.1)
+   es la que resuelve hoy.
+2. **`tool:engram` duplicado** (`AppData\Local\engram\bin` 3.6.0 y `go\bin` 2.0.0). Misma
+   decisión: se dejan. La buena (3.6.0) es la que resuelve hoy.
+3. **`installed:asset_version`** — *resuelto el 2026-10-28*. Los assets estaban configurados por
+   gentle-ai 4.2.0 y el binario era 4.3.1. Se ejecutó `gentle-ai sync`: 22 pasos aplicados, sin
+   tocar ningún archivo del repositorio (`git status` limpio, `AGENTS.md` verificado por hash).
+   El doctor pasó a `installed assets match running binary version (4.3.1)`, 7 comprobaciones OK
+   y 4 avisos. Efecto colateral a tener en cuenta: los 8 agentes de review de
+   `~/.claude/agents/` (`jd-fix-agent`, `jd-judge-a/b`, `review-readable/refuter/reliability/
+   resilience/risk`) se **preservaron sin actualizar** porque su ownership no se pudo verificar.
+   Siguen funcionando; adoptarlos requeriría borrarlos y re-sincronizar, que es una decisión del
+   propietario, no de este repo.
 4. **`tool:claude`**: el sondeo de versión falla y `claude` no se usa en este proyecto. Se ignora.
 5. **`pi:mcp`**: Pi tiene MCP deshabilitado en `settings.json` y `pi-mcp-adapter` no está. Engram
    responde igualmente por su propia integración, así que no bloquea nada de este repo.
 
-Ninguno de los cinco avisos bloquea el trabajo. Los tres primeros son deuda de entorno del
-usuario, no del proyecto.
+Ninguno de los avisos que quedan bloquea el trabajo. Los dos de duplicados son deuda de entorno
+del usuario, no del proyecto.
 
 ## Consecuencias
 
