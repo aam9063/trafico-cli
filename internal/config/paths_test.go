@@ -12,16 +12,16 @@ func testLookup(env map[string]string) EnvLookup {
 	return func(key string) string { return env[key] }
 }
 
-// windowsBaseEnv provides the Windows fallback variables so that the cases
+// baseEnv provides the fallback variables of every platform so that the cases
 // below only need to set the XDG variable under test.
-func windowsBaseEnv() map[string]string {
+func baseEnv() map[string]string {
 	return map[string]string{"AppData": `C:\AppData`, "LocalAppData": `C:\LocalAppData`}
 }
 
-// withBase merges extra environment entries over windowsBaseEnv so the
-// Windows fallback never kicks in unexpectedly in the XDG tests.
-func withBase(extra map[string]string) map[string]string {
-	env := windowsBaseEnv()
+// wrapBase merges extra environment entries over windowsBaseEnv so the
+// fallback of either platform resolves without touching the real environment.
+func wrapBase(extra map[string]string) map[string]string {
+	env := baseEnv()
 	for k, v := range extra {
 		env[k] = v
 	}
@@ -39,17 +39,17 @@ func TestResolvePathsHonoursXDGVariables(t *testing.T) {
 	}{
 		{
 			name: "config",
-			env:  withBase(map[string]string{"XDG_CONFIG_HOME": configBase}),
+			env:  wrapBase(map[string]string{"XDG_CONFIG_HOME": configBase}),
 			want: Paths{ConfigPath: filepath.Join(configBase, "trafico-cli", "config.toml")},
 		},
 		{
 			name: "data",
-			env:  withBase(map[string]string{"XDG_DATA_HOME": dataBase}),
+			env:  wrapBase(map[string]string{"XDG_DATA_HOME": dataBase}),
 			want: Paths{DataPath: filepath.Join(dataBase, "trafico-cli", "trafico.db")},
 		},
 		{
 			name: "cache",
-			env:  withBase(map[string]string{"XDG_CACHE_HOME": cacheBase}),
+			env:  wrapBase(map[string]string{"XDG_CACHE_HOME": cacheBase}),
 			want: Paths{CacheDir: filepath.Join(cacheBase, "trafico-cli")},
 		},
 	}
@@ -75,7 +75,7 @@ func TestResolvePathsHonoursXDGVariables(t *testing.T) {
 func TestResolvePathsIgnoresRelativeXDGValues(t *testing.T) {
 	// The XDG base directory specification says relative values must be ignored.
 	home := t.TempDir()
-	env := windowsBaseEnv()
+	env := baseEnv()
 	env["HOME"] = home
 	env["XDG_CONFIG_HOME"] = "relative/path"
 	env["XDG_DATA_HOME"] = "relative/path"
@@ -97,7 +97,7 @@ func TestResolvePathsIgnoresRelativeXDGValues(t *testing.T) {
 
 func TestResolvePathsFallsBackWhenXDGUnset(t *testing.T) {
 	home := t.TempDir()
-	env := windowsBaseEnv()
+	env := baseEnv()
 	env["HOME"] = home
 	lookup := testLookup(env)
 
