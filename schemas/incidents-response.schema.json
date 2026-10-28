@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aam9063/trafico-cli/schemas/incidents-response.schema.json",
+  "title": "IncidentsResponse",
+  "description": "Envelope of the trafico incidents command (docs/ARRANQUE.md section 5.3): exactly one JSON value on stdout, always with attribution and publication metadata (P-05, P-08).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "meta", "incidents", "attribution"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version of the output contract (P-09)."
+    },
+    "query": {
+      "type": "object",
+      "description": "Echo of the filters actually applied, so an agent can verify what it asked for. Documented keys: road (array of normalised road names), pk ({\"from\", \"to\"}, only with a single road), status (active|planned|all), and the other filters of section 5.2 (direction, province, type, severity, from, to, limit, sort). Keys the command did not apply are absent.",
+      "properties": {
+        "road": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Roads requested via --road, in normalised form."
+        },
+        "pk": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": { "type": "number", "description": "Requested kilometre-point lower bound." },
+            "to": { "type": "number", "description": "Requested kilometre-point upper bound." }
+          },
+          "description": "Kilometre-point window requested via --pk."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "planned", "all"],
+          "description": "Status filter requested via --status (active by default)."
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feed", "published_at", "fetched_at", "age_seconds", "stale", "from_cache", "total", "unlocated"],
+      "properties": {
+        "feed": {
+          "type": "string",
+          "const": "dgt-situations",
+          "description": "Identifier of the feed the data came from."
+        },
+        "published_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Publication time of the feed payload (com:publicationTime), the only valid freshness source (docs/feeds.md section 2). RFC3339 UTC."
+        },
+        "fetched_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When trafico downloaded the payload, RFC3339 UTC."
+        },
+        "age_seconds": {
+          "type": ["integer", "null"],
+          "description": "Seconds between published_at and the query; null when the feed carries no publication time."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when the data is older than the configured staleness limit: an agent must not present it as \"now\" (P-08)."
+        },
+        "from_cache": {
+          "type": "boolean",
+          "description": "True when the response came from the shared 60-second cache (P-06)."
+        },
+        "total": {
+          "type": "integer",
+          "description": "Number of incidents in this response after filtering."
+        },
+        "unlocated": {
+          "type": "integer",
+          "description": "Incidents excluded from a --province or --near filter because the record carried no location."
+        },
+        "coverage_note": {
+          "type": "string",
+          "description": "Present only when the filter touches provinces with known coverage gaps: it states that the DGT feed excludes the incidents managed by the SCT (Cataluña) and the Basque Government, although a few DGT-managed roads there do appear (docs/feeds.md section 4.6)."
+        }
+      },
+      "description": "Freshness and count metadata shared by every response."
+    },
+    "incidents": {
+      "type": "array",
+      "items": { "$ref": "incident.schema.json" },
+      "description": "The matching incidents, each validating against incident.schema.json."
+    },
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "license", "url", "fetched_at"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "DGT, Punto de Acceso Nacional",
+          "description": "Mandatory CC BY attribution of the data source."
+        },
+        "license": {
+          "type": "string",
+          "const": "CC BY",
+          "description": "License of the data."
+        },
+        "url": {
+          "type": "string",
+          "const": "https://nap.dgt.es/",
+          "description": "Where the data comes from."
+        },
+        "fetched_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Download time, RFC3339 UTC."
+        }
+      },
+      "description": "Attribution block present in every response (P-05, ARRANQUE section 2.1)."
+    }
+  }
+}

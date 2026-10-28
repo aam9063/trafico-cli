@@ -168,7 +168,9 @@ Precedencia: `sit:severity` del registro, luego `sit:overallSeverity` de la situ
 
 Consecuencia práctica: `--severity high` y `--min-severity medium` filtrarán una minoría y
 descartarán el 87 % de las incidencias por no tener severidad. La skill (§6.4) debe decir que
-`severity: null` significa "la DGT no lo publica", **no** "severidad baja".
+`severity: "unknown"` significa "la DGT no lo publica", **no** "severidad baja". El contrato de
+§4.1 fija `unknown` como valor del enum, así que ese caso viaja como cadena explícita y no como
+`null`: el agente necesita distinguir "no publicado" de "campo que no existe en el modelo".
 
 ### 4.6 Cobertura geográfica: el matiz que rompe el mensaje simple
 
