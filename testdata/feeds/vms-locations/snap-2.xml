@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<d2:payload xsi:type="ns2:DevicePublication" lang="es" modelBaseVersion="3" profileName="ProfileDGT" profileVersion="1.0" xsi:schemaLocation="http://levelC/schema/3/d2Payload https://nap.dgt.es/datex2/v3/dgt/DevicePublication/xsd/3.7_1.0/LevelC_3_D2Payload.xsd" xmlns:com="http://levelC/schema/3/common" xmlns:loc="http://levelC/schema/3/locationReferencing" xmlns:cse="http://levelC/schema/3/commonSpanishExtension" xmlns:fse="http://levelC/schema/3/faultAndStatusSpanishExtension" xmlns:ns2="http://levelC/schema/3/faultAndStatus" xmlns:d2="http://levelC/schema/3/d2Payload" xmlns:ns3="http://levelC/schema/3/locationExtension" xmlns:lse="http://levelC/schema/3/locationReferencingSpanishExtension" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <com:feedDescription>
+        <com:values>
+            <com:value>Publicación del estado y funcionamiento de los dispositivos ITS conforme a DATEX II.</com:value>
+        </com:values>
+    </com:feedDescription>
+    <com:publicationTime>2026-10-28T12:05:01.219+01:00</com:publicationTime>
+    <com:publicationCreator>
+        <com:country>es</com:country>
+        <com:nationalIdentifier>DGT</com:nationalIdentifier>
+    </com:publicationCreator>
+    <ns2:headerInformation>
+        <com:informationStatus>real</com:informationStatus>
+    </ns2:headerInformation>
+<!-- Fixture trimmed from the live DGT feed. Data: DGT, Punto de Acceso Nacional (CC BY). -->
+    <ns2:device xsi:type="fse:ExtendedDevice" id="167938" version="3">
+        <ns2:typeOfDevice>vms</ns2:typeOfDevice>
+        <ns2:lastUpdateOfDeviceInformation>2026-06-08T09:11:25.000+02:00</ns2:lastUpdateOfDeviceInformation>
+        <ns2:pointLocation>
+            <loc:supplementaryPositionalDescription>
+                <loc:roadInformation>
+                    <loc:roadDestination>LUGO</loc:roadDestination>
+                    <loc:roadName>A-54</loc:roadName>
+                </loc:roadInformation>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegPointLocation xsi:type="loc:TpegSimplePoint">
+                <loc:tpegDirection>unknown</loc:tpegDirection>
+                <loc:tpegSimplePointLocationType>nonLinkedPoint</loc:tpegSimplePointLocationType>
+                <loc:point xsi:type="loc:TpegNonJunctionPoint">
+                    <loc:pointCoordinates>
+                        <loc:latitude>42.96447</loc:latitude>
+                        <loc:longitude>-7.5005</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:_tpegNonJunctionPointExtension>
+                        <loc:extendedTpegNonJunctionPoint>
+                            <lse:kilometerPoint>0.65</lse:kilometerPoint>
+                            <lse:province>LUGO</lse:province>
+                        </loc:extendedTpegNonJunctionPoint>
+                    </loc:_tpegNonJunctionPointExtension>
+                </loc:point>
+                <loc:_tpegSimplePointExtension>
+                    <loc:extendedTpegSimplePoint>
+                        <lse:tpegDirectionRoad>negative</lse:tpegDirectionRoad>
+                    </loc:extendedTpegSimplePoint>
+                </loc:_tpegSimplePointExtension>
+            </loc:tpegPointLocation>
+        </ns2:pointLocation>
+    </ns2:device>
+    <ns2:device xsi:type="fse:ExtendedDevice" id="61441" version="4">
+        <ns2:typeOfDevice>vms</ns2:typeOfDevice>
+        <ns2:lastUpdateOfDeviceInformation>2024-10-28T18:25:32.000+01:00</ns2:lastUpdateOfDeviceInformation>
+        <ns2:pointLocation>
+            <loc:supplementaryPositionalDescription>
+                <loc:roadInformation>
+                    <loc:roadDestination>MADRID</loc:roadDestination>
+                    <loc:roadName>M-607</loc:roadName>
+                </loc:roadInformation>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegPointLocation xsi:type="loc:TpegSimplePoint">
+                <loc:tpegDirection>unknown</loc:tpegDirection>
+                <loc:tpegSimplePointLocationType>nonLinkedPoint</loc:tpegSimplePointLocationType>
+                <loc:point xsi:type="loc:TpegNonJunctionPoint">
+                    <loc:pointCoordinates>
+                        <loc:latitude>40.56056</loc:latitude>
+                        <loc:longitude>-3.713396</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:_tpegNonJunctionPointExtension>
+                        <loc:extendedTpegNonJunctionPoint>
+                            <lse:kilometerPoint>18.532</lse:kilometerPoint>
+                            <lse:province>MADRID</lse:province>
+                        </loc:extendedTpegNonJunctionPoint>
+                    </loc:_tpegNonJunctionPointExtension>
+                </loc:point>
+                <loc:_tpegSimplePointExtension>
+                    <loc:extendedTpegSimplePoint>
+                        <lse:tpegDirectionRoad>negative</lse:tpegDirectionRoad>
+                    </loc:extendedTpegSimplePoint>
+                </loc:_tpegSimplePointExtension>
+            </loc:tpegPointLocation>
+        </ns2:pointLocation>
+    </ns2:device>
+    <ns2:device xsi:type="fse:ExtendedDevice" id="167939" version="3">
+        <ns2:typeOfDevice>vms</ns2:typeOfDevice>
+        <ns2:lastUpdateOfDeviceInformation>2024-10-30T16:15:03.000+01:00</ns2:lastUpdateOfDeviceInformation>
+        <ns2:pointLocation>
+            <loc:supplementaryPositionalDescription>
+                <loc:roadInformation>
+                    <loc:roadDestination>A CORUÑA</loc:roadDestination>
+                    <loc:roadName>N-6</loc:roadName>
+                </loc:roadInformation>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegPointLocation xsi:type="loc:TpegSimplePoint">
+                <loc:tpegDirection>unknown</loc:tpegDirection>
+                <loc:tpegSimplePointLocationType>nonLinkedPoint</loc:tpegSimplePointLocationType>
+                <loc:point xsi:type="loc:TpegNonJunctionPoint">
+                    <loc:pointCoordinates>
+                        <loc:latitude>42.96809</loc:latitude>
+                        <loc:longitude>-7.49962</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:_tpegNonJunctionPointExtension>
+                        <loc:extendedTpegNonJunctionPoint>
+                            <lse:kilometerPoint>493.775</lse:kilometerPoint>
+                            <lse:province>LUGO</lse:province>
+                        </loc:extendedTpegNonJunctionPoint>
+                    </loc:_tpegNonJunctionPointExtension>
+                </loc:point>
+                <loc:_tpegSimplePointExtension>
+                    <loc:extendedTpegSimplePoint>
+                        <lse:tpegDirectionRoad>positive</lse:tpegDirectionRoad>
+                    </loc:extendedTpegSimplePoint>
+                </loc:_tpegSimplePointExtension>
+            </loc:tpegPointLocation>
+        </ns2:pointLocation>
+    </ns2:device>
+    <ns2:device xsi:type="fse:ExtendedDevice" id="61442" version="3">
+        <ns2:typeOfDevice>vms</ns2:typeOfDevice>
+        <ns2:lastUpdateOfDeviceInformation>2024-10-28T18:25:53.000+01:00</ns2:lastUpdateOfDeviceInformation>
+        <ns2:pointLocation>
+            <loc:supplementaryPositionalDescription>
+                <loc:roadInformation>
+                    <loc:roadDestination>MADRID</loc:roadDestination>
+                    <loc:roadName>M-607</loc:roadName>
+                </loc:roadInformation>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegPointLocation xsi:type="loc:TpegSimplePoint">
+                <loc:tpegDirection>unknown</loc:tpegDirection>
+                <loc:tpegSimplePointLocationType>nonLinkedPoint</loc:tpegSimplePointLocationType>
+                <loc:point xsi:type="loc:TpegNonJunctionPoint">
+                    <loc:pointCoordinates>
+                        <loc:latitude>40.575382</loc:latitude>
+                        <loc:longitude>-3.708159</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:_tpegNonJunctionPointExtension>
+                        <loc:extendedTpegNonJunctionPoint>
+                            <lse:kilometerPoint>20.1</lse:kilometerPoint>
+                            <lse:province>MADRID</lse:province>
+                        </loc:extendedTpegNonJunctionPoint>
+                    </loc:_tpegNonJunctionPointExtension>
+                </loc:point>
+                <loc:_tpegSimplePointExtension>
+                    <loc:extendedTpegSimplePoint>
+                        <lse:tpegDirectionRoad>negative</lse:tpegDirectionRoad>
+                    </loc:extendedTpegSimplePoint>
+                </loc:_tpegSimplePointExtension>
+            </loc:tpegPointLocation>
+        </ns2:pointLocation>
+    </ns2:device>
+    <ns2:device xsi:type="fse:ExtendedDevice" id="167937" version="1">
+        <ns2:typeOfDevice>vms</ns2:typeOfDevice>
+        <ns2:lastUpdateOfDeviceInformation>2024-10-28T15:23:02.000+01:00</ns2:lastUpdateOfDeviceInformation>
+        <ns2:pointLocation>
+            <loc:supplementaryPositionalDescription>
+                <loc:roadInformation>
+                    <loc:roadDestination>MADRID</loc:roadDestination>
+                    <loc:roadName>A-6</loc:roadName>
+                </loc:roadInformation>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegPointLocation xsi:type="loc:TpegSimplePoint">
+                <loc:tpegDirection>unknown</loc:tpegDirection>
+                <loc:tpegSimplePointLocationType>nonLinkedPoint</loc:tpegSimplePointLocationType>
+                <loc:point xsi:type="loc:TpegNonJunctionPoint">
+                    <loc:pointCoordinates>
+                        <loc:latitude>42.969643</loc:latitude>
+                        <loc:longitude>-7.4792056</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:_tpegNonJunctionPointExtension>
+                        <loc:extendedTpegNonJunctionPoint>
+                            <lse:kilometerPoint>486.9</lse:kilometerPoint>
+                            <lse:province>LUGO</lse:province>
+                        </loc:extendedTpegNonJunctionPoint>
+                    </loc:_tpegNonJunctionPointExtension>
+                </loc:point>
+                <loc:_tpegSimplePointExtension>
+                    <loc:extendedTpegSimplePoint>
+                        <lse:tpegDirectionRoad>negative</lse:tpegDirectionRoad>
+                    </loc:extendedTpegSimplePoint>
+                </loc:_tpegSimplePointExtension>
+            </loc:tpegPointLocation>
+        </ns2:pointLocation>
+    </ns2:device>
+</d2:payload>
