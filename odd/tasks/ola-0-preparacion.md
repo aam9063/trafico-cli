@@ -29,7 +29,7 @@ Sin código de CLI en esta ola: solo hechos de la fuente, licencias y forma de t
 |---|---|---|---|---|
 | T1 | H-01: licencia de cada dataset de la DGT | S6 | inline (research) | `3627851` |
 | T2 | H-02: flujo de trabajo y comprobación del harness | S1, S2, S6 | inline | `67e17b9` |
-| T3 | SPIKE-01: feeds reales, instantáneas y `mapping.yaml` | S6, S7 | inline | _(este PR)_ |
+| T3 | SPIKE-01: feeds reales, instantáneas y `mapping.yaml` | S6, S7 | inline | `123ef0a`, `9ff00a3` |
 
 ## Evidencia de verificación
 
