@@ -2,9 +2,13 @@ package config
 
 import (
 	"fmt"
+	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aam9063/trafico-cli/internal/road"
 )
 
 // Feed names of the six DGT datasets a command can consume (docs/feeds.md §1,
@@ -58,6 +62,21 @@ type Sink struct {
 	Template string `toml:"template"`
 }
 
+// Route is one saved route under [routes.<name>] (docs/ARRANQUE.md §5.4 and
+// §7, ROUTE-01): a named list of road segments with an optional travel
+// direction. Routes live in the config file, never in the SQLite store, and
+// the file is 0600 because a route is personal (P-07).
+type Route struct {
+	// Direction is the travel direction of the route: "positive",
+	// "negative" or "both". Empty means "both" (the default `route add`
+	// applies).
+	Direction string `toml:"direction"`
+	// Segments are the road stretches of the route, in the order the user
+	// declared them, each shaped "ROAD:FROM-TO" (e.g. "A-7:102-118").
+	// `route check` reports them in exactly this order (§5.4).
+	Segments []string `toml:"segments"`
+}
+
 // Stale groups the freshness settings under [stale].
 type Stale struct {
 	// MaxAge is how old a published feed may be before it is reported stale.
@@ -68,6 +87,7 @@ type Stale struct {
 type Config struct {
 	Feeds  map[string]Feed   `toml:"feeds"`
 	Places map[string]string `toml:"places"`
+	Routes map[string]Route  `toml:"routes"`
 	Stale  Stale             `toml:"stale"`
 	Sinks  map[string]Sink   `toml:"sinks"`
 }
@@ -125,6 +145,7 @@ func Default() *Config {
 			FeedSectionsAnimals: {URL: defaultAnimalsURL, Enabled: false},
 		},
 		Places: map[string]string{},
+		Routes: map[string]Route{},
 		Stale:  Stale{MaxAge: DefaultMaxAge},
 		Sinks:  map[string]Sink{},
 	}
@@ -144,6 +165,16 @@ func (c *Config) Validate() error {
 
 	for name, value := range c.Places {
 		if err := validatePlace(name, value); err != nil {
+			problems = append(problems, err)
+		}
+	}
+
+	for name, route := range c.Routes {
+		if err := ValidateRouteName(name); err != nil {
+			problems = append(problems, err)
+			continue
+		}
+		if err := validateRoute(name, route); err != nil {
 			problems = append(problems, err)
 		}
 	}
@@ -203,4 +234,100 @@ func validatePlace(name, value string) error {
 		return fmt.Errorf("place %q: longitude %g is out of range [-180, 180]", name, lon)
 	}
 	return nil
+}
+
+// validateRoute checks one saved route: at least one segment, every segment
+// parsable as "ROAD:FROM-TO" with FROM <= TO, and a direction of the
+// documented set (empty counts as "both"). It runs on Load, so a malformed
+// route is a loud configuration error, never a silent skip.
+func validateRoute(name string, route Route) error {
+	if len(route.Segments) == 0 {
+		return fmt.Errorf("route %q: at least one segment is required", name)
+	}
+	for _, segment := range route.Segments {
+		if _, err := ParseRouteSegment(segment); err != nil {
+			return fmt.Errorf("route %q: %w", name, err)
+		}
+	}
+	switch route.Direction {
+	case "", "positive", "negative", "both":
+		return nil
+	default:
+		return fmt.Errorf("route %q: unknown direction %q (want \"positive\", \"negative\" or \"both\")", name, route.Direction)
+	}
+}
+
+// identifierPattern matches a safe identifier for a saved route or place
+// name: a TOML bare key that is also safe to echo in messages and that can
+// never read as a path or shell fragment. It must start with a letter or
+// digit and continue with letters, digits, dots, hyphens or underscores, up
+// to 64 characters.
+var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// ValidateRouteName reports whether name is a safe identifier for a route
+// key under [routes.<name>]. The route and place commands apply it to new
+// entries so an unsafe name is rejected at add time (exit 2) instead of
+// producing a config Load can no longer accept.
+func ValidateRouteName(name string) error {
+	return validateIdentifier("route", name)
+}
+
+// ValidatePlaceName applies the same safe-identifier rule to a place name.
+// Existing place keys in a loaded config are never re-validated by
+// Validate (the [places] section predates ROUTE-01); the rule guards new
+// entries created through the place command.
+func ValidatePlaceName(name string) error {
+	return validateIdentifier("place", name)
+}
+
+func validateIdentifier(kind, name string) error {
+	if !identifierPattern.MatchString(name) {
+		return fmt.Errorf("%s name %q is not a safe identifier: use 1-64 letters, digits, dots, hyphens or underscores, starting with a letter or digit", kind, name)
+	}
+	return nil
+}
+
+// RouteSegment is one parsed route segment: a road with its kilometre-point
+// interval, both bounds present and From <= To.
+type RouteSegment struct {
+	Road string
+	From float64
+	To   float64
+}
+
+// ParseRouteSegment parses a stored route segment "ROAD:FROM-TO" (e.g.
+// "A-7:102-118"). ROAD is any road name and is normalised with
+// road.Normalize, so "a7:100-140" and "A-7:100-140" are the same segment;
+// FROM and TO are kilometre points with FROM <= TO. config.Validate uses it
+// on Load (a bad segment is a loud error) and the route commands reuse it,
+// wrapping the failure as a usage error, so the rule has one single source.
+func ParseRouteSegment(segment string) (RouteSegment, error) {
+	trimmed := strings.TrimSpace(segment)
+	roadPart, pkPart, found := strings.Cut(trimmed, ":")
+	roadPart, pkPart = strings.TrimSpace(roadPart), strings.TrimSpace(pkPart)
+	if !found || roadPart == "" {
+		return RouteSegment{}, fmt.Errorf("segment %q: want \"ROAD:FROM-TO\", for example \"A-7:102-118\"", segment)
+	}
+	name := road.Normalize(roadPart)
+	if name == "" {
+		return RouteSegment{}, fmt.Errorf("segment %q: the road name is empty", segment)
+	}
+	bounds := strings.SplitN(pkPart, "-", 2)
+	if len(bounds) != 2 {
+		return RouteSegment{}, fmt.Errorf("segment %q: want \"ROAD:FROM-TO\", for example \"A-7:102-118\"", segment)
+	}
+	from, errFrom := strconv.ParseFloat(strings.TrimSpace(bounds[0]), 64)
+	to, errTo := strconv.ParseFloat(strings.TrimSpace(bounds[1]), 64)
+	if errFrom != nil || errTo != nil {
+		return RouteSegment{}, fmt.Errorf("segment %q: the kilometre points must be numbers, for example \"A-7:102-118\"", segment)
+	}
+	// strconv also parses "NaN" and "Inf"; a non-finite kilometre point
+	// would silently break every range comparison downstream.
+	if math.IsNaN(from) || math.IsInf(from, 0) || math.IsNaN(to) || math.IsInf(to, 0) {
+		return RouteSegment{}, fmt.Errorf("segment %q: the kilometre points must be finite numbers", segment)
+	}
+	if from > to {
+		return RouteSegment{}, fmt.Errorf("segment %q: the kilometre range is inverted (%g > %g)", segment, from, to)
+	}
+	return RouteSegment{Road: name, From: from, To: to}, nil
 }
