@@ -518,7 +518,11 @@ Principios de la sección 3 que aplican.
 
 ### 10.6 Entrega
 
-Ramas `tr/<id>-descripcion`, un PR por tarea. Merge siempre humano (H-03).
+Ramas `tr/<id>-descripcion`, un PR por tarea.
+
+> **Corregido el 2026-10-28 (ADR 0002).** El agente commitea, pushea, abre el PR y lo mergea
+> contra `dev` con el CI en verde. `main` queda reservada a releases y solo la mueve una persona.
+> Un PR por tarea, historia lineal en `dev` (merge con rebase) y la rama se borra al mergear.
 
 ---
 
