@@ -211,14 +211,18 @@ Los campos exactos se confirman en SPIKE-01. Si un campo no existe en el feed, n
     "from_cache": true,
     "total": 2,
     "unlocated": 0,
-    "coverage_note": "Sin datos de Cataluña ni País Vasco"
+    "coverage_note": "Cobertura de la DGT: no incluye las incidencias gestionadas por la SCT (Cataluña) ni por el Gobierno Vasco"
   },
   "incidents": [ { "...": "modelo 4.1" } ],
   "attribution": { "source": "DGT, Punto de Acceso Nacional", "license": "CC BY", "url": "https://nap.dgt.es/" }
 }
 ```
 
-`coverage_note` aparece cuando el filtro toca provincias de Cataluña o País Vasco, para que el agente no diga "no hay incidencias" donde simplemente no hay datos.
+`coverage_note` nombra **al gestor, no a la provincia**, porque el feed sí trae incidencias en
+Barcelona, Girona y Tarragona: son carreteras estatales dentro de Cataluña. Lo que falta son las que
+gestiona la SCT. Un agente que diga "no hay datos de Cataluña" estaría mintiendo sobre la AP-7 en
+Barcelona. Aparece salvo que el filtro restrinja a provincias donde no hay un gestor autonómico
+distinto del Estado.
 
 ### 5.4 Rutas
 
@@ -307,7 +311,7 @@ description: Consultar incidencias, obras, paneles y radares de la DGT por carre
 
 ## Reglas
 - Usa la salida JSON. Mira siempre meta.published_at y meta.stale antes de decir "ahora".
-- Si meta.coverage_note aparece, dilo: no hay datos de Cataluña ni País Vasco.
+- Si meta.coverage_note aparece, dilo: la cobertura no incluye lo que gestionan la SCT (Cataluña) ni el Gobierno Vasco. No digas "no hay datos de Cataluña": puede haber incidencias de la DGT en Barcelona, Girona o Tarragona.
 - Cita la fuente: "Datos de la DGT".
 - No inventes tiempos de viaje ni retenciones: solo lo que viene en el feed.
 - Código 7: la DGT ha cambiado algo; díselo al usuario y no reintentes en bucle.

@@ -180,9 +180,15 @@ Melilla**.
 Pero **sí aparecen Barcelona (8), Girona (2) y Tarragona (1)**: la DGT publica incidencias de
 carreteras de su competencia que cruzan Cataluña, aunque no las que gestiona la SCT.
 
-Consecuencia para `coverage_note` (§5.3): el texto "Sin datos de Cataluña ni País Vasco" es
-**impreciso**. Debe decir algo equivalente a "Cobertura de la DGT: sin las incidencias gestionadas
-por la SCT (Cataluña) ni por el Gobierno Vasco", porque puede haber filas de esas provincias.
+Consecuencia para `coverage_note` (§5.3): **decidido el 2026-10-28** que el texto nombra al gestor,
+no a la provincia:
+
+```
+Cobertura de la DGT: no incluye las incidencias gestionadas por la SCT (Cataluña) ni por el Gobierno Vasco
+```
+
+Así el agente puede decir "la DGT no publica las incidencias de la SCT", que es cierto, en vez de
+"no hay datos de Cataluña", que es falso para Barcelona, Girona y Tarragona.
 
 También hay provincias bilingües con barra: `Alacant/Alicante`, `Castelló/Castellón`,
 `València/Valencia`, `A Coruña`, `Illes Balears`, `La Rioja`, `Ourense`. El filtro `--province`
@@ -433,7 +439,7 @@ atribución embebida como comentario.
 | §4.1: `direction_label: "Valencia"` | No existe en incidencias; sí como `roadDestination` en paneles | §4.3 y §5.1 |
 | §4.1: `raw_description` con el texto original | Casi nunca hay texto libre | §4.3: se conserva `causeType`/`detail` |
 | §4.1: `road` "mayúsculas y guion" | 564 formatos distintos, con ramales, vías urbanas y texto libre | §4.7 |
-| §5.3: `coverage_note` "Sin datos de Cataluña ni País Vasco" | La DGT sí publica algunas incidencias en Barcelona, Girona y Tarragona | §4.6 |
+| §5.3: `coverage_note` "Sin datos de Cataluña ni País Vasco" | La DGT sí publica algunas incidencias en Barcelona, Girona y Tarragona | §4.6 — **resuelto**: el texto nombra a los gestores (SCT y Gobierno Vasco), no a las provincias |
 | §7: `[feeds.dgt-signs]` y `[feeds.dgt-radars]` con `url = ""` | URLs reales confirmadas | Config por defecto de FEED-01 |
 | §8.2: un único parser DATEX II | Tres dialectos incompatibles | §1.1 |
 | P-06 / FEED-01: "cabeceras condicionales si el servidor las soporta" | No hay `ETag` ni `Last-Modified` | §2: no implementarlas |
