@@ -251,6 +251,89 @@ outer:
 	}
 }
 
+// A record whose point carries no <loc:pointCoordinates> must report nil
+// coordinates, not a real position at (0,0): null island in the Gulf of
+// Guinea would make the record invisible to a radius filter and assert a
+// position the feed never gave (P-04, CMD-01 review, advisory 6). A point
+// whose coordinates are genuinely 0/0 keeps them: the distinction is the
+// presence of the pointCoordinates element, not the values.
+func TestParseSituations_PointWithoutCoordinatesIsNil(t *testing.T) {
+	const body = `<?xml version="1.0" encoding="UTF-8"?>
+<d2:payload xsi:type="sit:SituationPublication" xmlns:com="http://levelC/schema/3/common" xmlns:sit="http://levelC/schema/3/situation" xmlns:loc="http://levelC/schema/3/locationReferencing" xmlns:lse="http://levelC/schema/3/locationReferencingSpanishExtension" xmlns:d2="http://levelC/schema/3/d2Payload" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <com:publicationTime>2026-10-28T13:12:17.098+01:00</com:publicationTime>
+  <sit:situation id="s1">
+    <sit:situationRecord xsi:type="sit:Accident" id="r-no-coords" version="1">
+      <sit:situationRecordCreationTime>2025-12-12T08:11:34.000+01:00</sit:situationRecordCreationTime>
+      <sit:situationRecordVersionTime>2025-12-12T08:11:34.000+01:00</sit:situationRecordVersionTime>
+      <sit:validity>
+        <com:validityStatus>active</com:validityStatus>
+        <com:validityTimeSpecification>
+          <com:overallStartTime>2025-12-12T08:05:19.000+01:00</com:overallStartTime>
+        </com:validityTimeSpecification>
+      </sit:validity>
+      <sit:cause><sit:causeType>accident</sit:causeType></sit:cause>
+      <sit:locationReference xsi:type="loc:PointLocation">
+        <loc:tpegPointLocation xsi:type="loc:TpegSimplePoint">
+          <loc:point xsi:type="loc:TpegNonJunctionPoint">
+            <loc:_tpegNonJunctionPointExtension>
+              <loc:extendedTpegNonJunctionPoint>
+                <lse:province>Huesca</lse:province>
+                <lse:municipality>Villanueva de Sigena</lse:municipality>
+                <lse:kilometerPoint>1.2</lse:kilometerPoint>
+              </loc:extendedTpegNonJunctionPoint>
+            </loc:_tpegNonJunctionPointExtension>
+          </loc:point>
+        </loc:tpegPointLocation>
+      </sit:locationReference>
+    </sit:situationRecord>
+  </sit:situation>
+  <sit:situation id="s2">
+    <sit:situationRecord xsi:type="sit:Accident" id="r-zero-coords" version="1">
+      <sit:situationRecordCreationTime>2025-12-12T08:11:34.000+01:00</sit:situationRecordCreationTime>
+      <sit:situationRecordVersionTime>2025-12-12T08:11:34.000+01:00</sit:situationRecordVersionTime>
+      <sit:validity>
+        <com:validityStatus>active</com:validityStatus>
+        <com:validityTimeSpecification>
+          <com:overallStartTime>2025-12-12T08:05:19.000+01:00</com:overallStartTime>
+        </com:validityTimeSpecification>
+      </sit:validity>
+      <sit:cause><sit:causeType>accident</sit:causeType></sit:cause>
+      <sit:locationReference xsi:type="loc:PointLocation">
+        <loc:tpegPointLocation xsi:type="loc:TpegSimplePoint">
+          <loc:point xsi:type="loc:TpegNonJunctionPoint">
+            <loc:pointCoordinates><loc:latitude>0</loc:latitude><loc:longitude>0</loc:longitude></loc:pointCoordinates>
+            <loc:_tpegNonJunctionPointExtension>
+              <loc:extendedTpegNonJunctionPoint>
+                <lse:province>Huesca</lse:province>
+              </loc:extendedTpegNonJunctionPoint>
+            </loc:_tpegNonJunctionPointExtension>
+          </loc:point>
+        </loc:tpegPointLocation>
+      </sit:locationReference>
+    </sit:situationRecord>
+  </sit:situation>
+</d2:payload>`
+
+	pub, err := ParseSituations(strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("ParseSituations: %v", err)
+	}
+	if len(pub.Situations) != 2 || len(pub.Situations[0].Records) != 1 || len(pub.Situations[1].Records) != 1 {
+		t.Fatalf("got %d situations, want 2 with one record each", len(pub.Situations))
+	}
+	without := pub.Situations[0].Records[0]
+	if without.Start != nil {
+		t.Errorf("record without pointCoordinates: Start = %+v, want nil (never assert a position the feed did not give, P-04)", *without.Start)
+	}
+	if without.Province != "Huesca" || without.Municipality != "Villanueva de Sigena" || without.PK == nil || without.PK.From == nil {
+		t.Errorf("record without pointCoordinates lost its extension: province=%q municipality=%q pk=%+v", without.Province, without.Municipality, without.PK)
+	}
+	zero := pub.Situations[1].Records[0]
+	if zero.Start == nil || zero.Start.Latitude != 0 || zero.Start.Longitude != 0 {
+		t.Errorf("record with real 0/0 coordinates: Start = %+v, want {0 0}", zero.Start)
+	}
+}
+
 // Severity precedence (docs/feeds.md §4.5): record severity wins, then the
 // situation's overallSeverity, and it is never inferred from the cause.
 // No fixture has overallSeverity without record severity, so this uses a

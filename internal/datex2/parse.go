@@ -144,8 +144,11 @@ type xmlExtendedSimplePoint struct {
 
 // xmlNonJunctionPoint is shared by loc:to, loc:from and loc:point: the
 // coordinates plus the Spanish extension with PK, province and municipality.
+// Coords is a pointer so an absent <loc:pointCoordinates> stays distinct
+// from a real (0,0): the zero struct would invent a position at null island
+// and make the record invisible to a radius filter (P-04, CMD-01 review).
 type xmlNonJunctionPoint struct {
-	Coords    xmlCoordinates            `xml:"http://levelC/schema/3/locationReferencing pointCoordinates"`
+	Coords    *xmlCoordinates           `xml:"http://levelC/schema/3/locationReferencing pointCoordinates"`
 	Extension xmlNonJunctionPointExtWrp `xml:"http://levelC/schema/3/locationReferencing _tpegNonJunctionPointExtension"`
 }
 
@@ -348,7 +351,7 @@ func pkFromPoints(from, to *xmlNonJunctionPoint) *PK {
 }
 
 func coordinatesOf(p *xmlNonJunctionPoint) *Coordinates {
-	if p == nil {
+	if p == nil || p.Coords == nil {
 		return nil
 	}
 	return &Coordinates{Latitude: p.Coords.Latitude, Longitude: p.Coords.Longitude}
