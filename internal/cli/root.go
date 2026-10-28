@@ -32,6 +32,7 @@ func NewRootCommand() *cobra.Command {
 		return errs.NewUsage(err.Error())
 	})
 	root.AddCommand(newVersionCommand())
+	root.AddCommand(newIncidentsCommand())
 	root.AddCommand(newFeedsCommand())
 	root.AddCommand(newDoctorCommand())
 	return root

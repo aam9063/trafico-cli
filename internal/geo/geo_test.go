@@ -214,6 +214,31 @@ func TestResolveTargetZeroRadiusWithoutTargetMeansNoGeoFilter(t *testing.T) {
 	}
 }
 
+// Non-finite --lat/--lon values (pflag accepts "NaN" and "inf") must be
+// rejected the same way as out-of-range ones: NaN slips past every range
+// comparison, so a NaN centre would silently match nothing and the response
+// would claim an honest "no incidents" (CMD-01 review, blocker 1).
+func TestResolveTargetNonFiniteCoordinatesIsUsageError(t *testing.T) {
+	tests := []struct {
+		name     string
+		lat, lon *float64
+	}{
+		{name: "NaN latitude", lat: flt(math.NaN()), lon: flt(-0.4810)},
+		{name: "NaN longitude", lat: flt(38.3452), lon: flt(math.NaN())},
+		{name: "inf latitude", lat: flt(math.Inf(1)), lon: flt(-0.4810)},
+		{name: "-inf longitude", lat: flt(38.3452), lon: flt(math.Inf(-1))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveTarget("", tt.lat, tt.lon, 15, places())
+			assertUsage(t, err)
+			if got != nil {
+				t.Errorf("ResolveTarget() = %v, want nil", got)
+			}
+		})
+	}
+}
+
 func TestResolveTarget(t *testing.T) {
 	tests := []struct {
 		name     string
