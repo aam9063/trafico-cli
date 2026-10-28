@@ -46,7 +46,7 @@ func NewAttribution(fetchedAt time.Time) Attribution {
 // Meta holds the generic response metadata (ARRANQUE §5.3). It is a plain data
 // holder: deriving published_at, age_seconds or stale is the caller's job.
 type Meta struct {
-	Feed         string     `json:"feed"`
+	Feed         string     `json:"feed,omitempty"`
 	PublishedAt  *time.Time `json:"published_at"`
 	FetchedAt    time.Time  `json:"fetched_at"`
 	AgeSeconds   *int64     `json:"age_seconds"`
