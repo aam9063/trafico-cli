@@ -1,0 +1,21 @@
+# Binaries
+/trafico
+/trafico.exe
+/dist/
+/bin/
+
+# Test artifacts
+*.test
+*.out
+coverage.*
+
+# Local runtime data (never committed)
+*.db
+*.db-shm
+*.db-wal
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
