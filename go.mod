@@ -2,6 +2,8 @@ module github.com/aam9063/trafico-cli
 
 go 1.25
 
+toolchain go1.26.6
+
 require github.com/spf13/cobra v1.10.2
 
 require (
