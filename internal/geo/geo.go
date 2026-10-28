@@ -140,7 +140,12 @@ func parseCoordinates(value string) (model.Coordinates, error) {
 }
 
 func validateRange(lat, lon float64) error {
-	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+	// Non-finite values slip past every range comparison (NaN < -90 is
+	// false, so does NaN > 90), so they must be rejected explicitly: a NaN
+	// centre would silently match nothing and the response would claim an
+	// honest "no incidents" (CMD-01 review, blocker 1).
+	if math.IsNaN(lat) || math.IsInf(lat, 0) || math.IsNaN(lon) || math.IsInf(lon, 0) ||
+		lat < -90 || lat > 90 || lon < -180 || lon > 180 {
 		return errs.NewUsage("las coordenadas están fuera de rango: latitud -90..90, longitud -180..180")
 	}
 	return nil
