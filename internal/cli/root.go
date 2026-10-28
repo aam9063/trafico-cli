@@ -32,7 +32,18 @@ func NewRootCommand() *cobra.Command {
 		return errs.NewUsage(err.Error())
 	})
 	root.AddCommand(newVersionCommand())
+	root.AddCommand(newFeedsCommand())
+	root.AddCommand(newDoctorCommand())
 	return root
+}
+
+// addPrettyFlag registers --pretty on a command that renders its output as a
+// JSON envelope (ARRANQUE section 6.1). It is deliberately not a root
+// persistent flag: a command that prints plain text, such as `trafico
+// version`, must reject the flag as unknown (exit 2) instead of silently
+// ignoring it (CMD-02 review).
+func addPrettyFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("pretty", false, "render output in human-readable Spanish text instead of JSON")
 }
 
 // Execute runs the root command and returns the process exit code.
