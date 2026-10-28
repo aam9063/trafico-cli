@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<d2:payload xsi:type="vms:VmsPublication" lang="es" modelBaseVersion="3" profileName="DGT (Spain) Profile VMSPublication" profileVersion="3.7_1.0" xsi:schemaLocation="http://levelC/schema/3/d2Payload https://nap.dgt.es/datex2/v3/dgt/VmsPublication/xsd/3.7_1.0/LevelC_3_D2Payload.xsd" xmlns:com="http://levelC/schema/3/common" xmlns:cse="http://levelC/schema/3/commonSpanishExtension" xmlns:vms="http://levelC/schema/3/vms" xmlns:d2="http://levelC/schema/3/d2Payload" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <com:feedDescription>
+        <com:values>
+            <com:value>Publicación de paneles de mensaje variable.</com:value>
+        </com:values>
+    </com:feedDescription>
+    <com:publicationTime>2026-10-28T13:04:37.000+01:00</com:publicationTime>
+    <com:publicationCreator>
+        <com:country>es</com:country>
+        <com:nationalIdentifier>DGT</com:nationalIdentifier>
+    </com:publicationCreator>
+    <vms:headerInformation>
+        <com:informationStatus>real</com:informationStatus>
+    </vms:headerInformation>
+<!-- Fixture trimmed from the live DGT feed. Data: DGT, Punto de Acceso Nacional (CC BY). -->
+    <vms:vmsControllerStatus>
+        <vms:vmsControllerTableReference targetClass="vms:VmsControllerTable" id=""/>
+        <vms:vmsControllerReference targetClass="vms:VmsController" id="167938"/>
+        <vms:vmsStatus vmsIndex="1">
+            <vms:vmsStatus>
+                <vms:vmsMessage messageIndex="1">
+                    <vms:vmsMessage>
+                        <vms:timeLastSet>2026-10-27T19:22:51.000+01:00</vms:timeLastSet>
+                        <vms:displayAreaSettings displayAreaIndex="1">
+                            <vms:displayAreaSettings xsi:type="vms:PictogramDisplay">
+                                <vms:pictogramDisplayUrl>https://etraffic.dgt.es/estaticosEtraffic/Iconografia/pictogramas/0.png</vms:pictogramDisplayUrl>
+                                <vms:pictogram xsi:type="vms:RegularPictogram">
+                                    <vms:customPictogramCode>0</vms:customPictogramCode>
+                                    <vms:pictogramFlashing>false</vms:pictogramFlashing>
+                                </vms:pictogram>
+                            </vms:displayAreaSettings>
+                        </vms:displayAreaSettings>
+                    </vms:vmsMessage>
+                </vms:vmsMessage>
+                <vms:vmsMessage messageIndex="2">
+                    <vms:vmsMessage>
+                        <vms:timeLastSet>2026-10-27T19:22:51.000+01:00</vms:timeLastSet>
+                        <vms:displayAreaSettings displayAreaIndex="1">
+                            <vms:displayAreaSettings xsi:type="vms:PictogramDisplay">
+                                <vms:pictogramDisplayUrl>https://etraffic.dgt.es/estaticosEtraffic/Iconografia/pictogramas/0.png</vms:pictogramDisplayUrl>
+                                <vms:pictogram xsi:type="vms:RegularPictogram">
+                                    <vms:customPictogramCode>0</vms:customPictogramCode>
+                                    <vms:pictogramFlashing>false</vms:pictogramFlashing>
+                                </vms:pictogram>
+                            </vms:displayAreaSettings>
+                        </vms:displayAreaSettings>
+                    </vms:vmsMessage>
+                </vms:vmsMessage>
+            </vms:vmsStatus>
+        </vms:vmsStatus>
+    </vms:vmsControllerStatus>
+    <vms:vmsControllerStatus>
+        <vms:vmsControllerTableReference targetClass="vms:VmsControllerTable" id=""/>
+        <vms:vmsControllerReference targetClass="vms:VmsController" id="167939"/>
+        <vms:vmsStatus vmsIndex="1">
+            <vms:vmsStatus>
+                <vms:vmsMessage messageIndex="1">
+                    <vms:vmsMessage>
+                        <vms:timeLastSet>2026-10-27T19:23:23.000+01:00</vms:timeLastSet>
+                        <vms:displayAreaSettings displayAreaIndex="1">
+                            <vms:displayAreaSettings xsi:type="vms:PictogramDisplay">
+                                <vms:pictogramDisplayUrl>https://etraffic.dgt.es/estaticosEtraffic/Iconografia/pictogramas/0.png</vms:pictogramDisplayUrl>
+                                <vms:pictogram xsi:type="vms:RegularPictogram">
+                                    <vms:customPictogramCode>0</vms:customPictogramCode>
+                                    <vms:pictogramFlashing>false</vms:pictogramFlashing>
+                                </vms:pictogram>
+                            </vms:displayAreaSettings>
+                        </vms:displayAreaSettings>
+                    </vms:vmsMessage>
+                </vms:vmsMessage>
+                <vms:vmsMessage messageIndex="2">
+                    <vms:vmsMessage>
+                        <vms:timeLastSet>2026-10-27T19:23:23.000+01:00</vms:timeLastSet>
+                        <vms:displayAreaSettings displayAreaIndex="1">
+                            <vms:displayAreaSettings xsi:type="vms:PictogramDisplay">
+                                <vms:pictogramDisplayUrl>https://etraffic.dgt.es/estaticosEtraffic/Iconografia/pictogramas/0.png</vms:pictogramDisplayUrl>
+                                <vms:pictogram xsi:type="vms:RegularPictogram">
+                                    <vms:customPictogramCode>0</vms:customPictogramCode>
+                                    <vms:pictogramFlashing>false</vms:pictogramFlashing>
+                                </vms:pictogram>
+                            </vms:displayAreaSettings>
+                        </vms:displayAreaSettings>
+                    </vms:vmsMessage>
+                </vms:vmsMessage>
+            </vms:vmsStatus>
+        </vms:vmsStatus>
+    </vms:vmsControllerStatus>
+    <vms:vmsControllerStatus>
+        <vms:vmsControllerTableReference targetClass="vms:VmsControllerTable" id=""/>
+        <vms:vmsControllerReference targetClass="vms:VmsController" id="61441"/>
+        <vms:vmsStatus vmsIndex="1">
+            <vms:vmsStatus>
+                <vms:vmsMessage messageIndex="1">
+                    <vms:vmsMessage>
+                        <vms:timeLastSet>2026-10-28T12:55:31.000+01:00</vms:timeLastSet>
+                        <vms:displayAreaSettings displayAreaIndex="1">
+                            <vms:displayAreaSettings xsi:type="vms:PictogramDisplay">
+                                <vms:pictogramDisplayUrl>https://etraffic.dgt.es/estaticosEtraffic/Iconografia/pictogramas/R301100I.png</vms:pictogramDisplayUrl>
+                                <vms:pictogram xsi:type="vms:RegularPictogram">
+                                    <vms:customPictogramCode>R301100I</vms:customPictogramCode>
+                                    <vms:pictogramFlashing>false</vms:pictogramFlashing>
+                                </vms:pictogram>
+                            </vms:displayAreaSettings>
+                        </vms:displayAreaSettings>
+                        <vms:displayAreaSettings displayAreaIndex="3">
+                            <vms:displayAreaSettings xsi:type="vms:PictogramDisplay">
+                                <vms:pictogramDisplayUrl>https://etraffic.dgt.es/estaticosEtraffic/Iconografia/pictogramas/E17.png</vms:pictogramDisplayUrl>
+                                <vms:pictogram xsi:type="vms:RegularPictogram">
+                                    <vms:customPictogramCode>E17</vms:customPictogramCode>
+                                    <vms:pictogramFlashing>false</vms:pictogramFlashing>
+                                </vms:pictogram>
+                            </vms:displayAreaSettings>
+                        </vms:displayAreaSettings>
+                        <vms:displayAreaSettings displayAreaIndex="2">
+                            <vms:displayAreaSettings xsi:type="vms:TextDisplay">
+                                <vms:textLine lineIndex="1">
+                                    <vms:textLine>
+                                        <vms:textLine> VELOCIDAD
+ CONTROLADA
+ POR RADAR</vms:textLine>
+                                        <vms:lineFlashing>false</vms:lineFlashing>
+                                    </vms:textLine>
+                                </vms:textLine>
+                            </vms:displayAreaSettings>
+                        </vms:displayAreaSettings>
+                    </vms:vmsMessage>
+                </vms:vmsMessage>
+            </vms:vmsStatus>
+        </vms:vmsStatus>
+    </vms:vmsControllerStatus>
+</d2:payload>

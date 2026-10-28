@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?><d2LogicalModel modelBaseVersion="1.0" xsi:schemaLocation="http://datex2.eu/schema/1_0/1_0 http://datex2.eu/schema/1_0/1_0/DATEXIISchema_1_0_1_0.xsd" xmlns="http://datex2.eu/schema/1_0/1_0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <exchange>
+    <supplierIdentification>
+      <country>es</country>
+      <nationalIdentifier>dgt</nationalIdentifier>
+    </supplierIdentification>
+  </exchange>
+  <payloadPublication lang="es" xsi:type="_0:PredefinedLocationsPublication" xmlns:xsd="http:www.w3.org/2001/XMLSchema" xmlns:xs="http:www.w3.org/2001/XMLSchema" xmlns:_0="http://datex2.eu/schema/1_0/1_0">
+    <_0:publicationTime>2026-10-28T11:11:13.593+01:00</_0:publicationTime>
+    <_0:publicationCreator>
+      <_0:country>es</_0:country>
+      <_0:nationalIdentifier>dgt_invive</_0:nationalIdentifier>
+    </_0:publicationCreator>
+    <_0:headerInformation>
+      <_0:areaOfInterest>national</_0:areaOfInterest>
+      <_0:confidentiality>noRestriction</_0:confidentiality>
+      <_0:informationUsage>broadcast</_0:informationUsage>
+      <_0:informationStatus>real</_0:informationStatus>
+    </_0:headerInformation>
+    <_0:predefinedLocationSet id="GUID_Inventario_Tramos_Invive">
+      <_0:predefinedLocationSetName>
+        <_0:value lang="es">Tramos_Invive</_0:value>
+      </_0:predefinedLocationSetName>
+<!-- Fixture trimmed from the live DGT feed. Data: DGT, Punto de Acceso Nacional (CC BY). -->
+      <_0:predefinedLocation id="GUID_Tramo_Invive_1">
+        <_0:predefinedLocation xsi:type="_0:Linear">
+          <_0:tpeglinearLocation>
+            <_0:tpegDirection>bothWays</_0:tpegDirection>
+            <_0:tpegLocationType>segment</_0:tpegLocationType>
+            <_0:to xsi:type="_0:TPEGNonJunctionPoint">
+              <_0:pointCoordinates>
+                <_0:latitude>39.11986</_0:latitude>
+                <_0:longitude>-1.99897</_0:longitude>
+              </_0:pointCoordinates>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>CM-220</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>linkName</_0:tpegDescriptorType>
+              </_0:name>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>ALBACETE</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>other</_0:tpegDescriptorType>
+              </_0:name>
+            </_0:to>
+            <_0:from xsi:type="_0:TPEGNonJunctionPoint">
+              <_0:pointCoordinates>
+                <_0:latitude>39.25851</_0:latitude>
+                <_0:longitude>-1.91995</_0:longitude>
+              </_0:pointCoordinates>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>CM-220</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>linkName</_0:tpegDescriptorType>
+              </_0:name>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>ALBACETE</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>other</_0:tpegDescriptorType>
+              </_0:name>
+            </_0:from>
+          </_0:tpeglinearLocation>
+          <_0:referencePointLinear>
+            <_0:referencePointPrimaryLocation>
+              <_0:referencePoint>
+                <_0:referencePointIdentifier>Tramo_Invive_1_ini</_0:referencePointIdentifier>
+                <_0:administrativeArea>
+                  <_0:value lang="es">ALBACETE</_0:value>
+                </_0:administrativeArea>
+                <_0:roadName>
+                  <_0:value>CM-220</_0:value>
+                </_0:roadName>
+                <_0:roadNumber>CM-220</_0:roadNumber>
+                <_0:directionRelative>both</_0:directionRelative>
+                <_0:referencePointDistance>17300.0</_0:referencePointDistance>
+              </_0:referencePoint>
+            </_0:referencePointPrimaryLocation>
+            <_0:referencePointSecondaryLocation>
+              <_0:referencePoint>
+                <_0:referencePointIdentifier>Tramo_Invive_1_fin</_0:referencePointIdentifier>
+                <_0:administrativeArea>
+                  <_0:value lang="es">ALBACETE</_0:value>
+                </_0:administrativeArea>
+                <_0:roadName>
+                  <_0:value>CM-220</_0:value>
+                </_0:roadName>
+                <_0:roadNumber>CM-220</_0:roadNumber>
+                <_0:directionRelative>both</_0:directionRelative>
+                <_0:referencePointDistance>34800.0</_0:referencePointDistance>
+              </_0:referencePoint>
+            </_0:referencePointSecondaryLocation>
+          </_0:referencePointLinear>
+        </_0:predefinedLocation>
+      </_0:predefinedLocation>
+      <_0:predefinedLocation id="GUID_Tramo_Invive_2">
+        <_0:predefinedLocation xsi:type="_0:Linear">
+          <_0:tpeglinearLocation>
+            <_0:tpegDirection>bothWays</_0:tpegDirection>
+            <_0:tpegLocationType>segment</_0:tpegLocationType>
+            <_0:to xsi:type="_0:TPEGNonJunctionPoint">
+              <_0:pointCoordinates>
+                <_0:latitude>38.602222</_0:latitude>
+                <_0:longitude>-1.68093</_0:longitude>
+              </_0:pointCoordinates>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>N-301</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>linkName</_0:tpegDescriptorType>
+              </_0:name>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>ALBACETE</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>other</_0:tpegDescriptorType>
+              </_0:name>
+            </_0:to>
+            <_0:from xsi:type="_0:TPEGNonJunctionPoint">
+              <_0:pointCoordinates>
+                <_0:latitude>38.792637</_0:latitude>
+                <_0:longitude>-1.7259834</_0:longitude>
+              </_0:pointCoordinates>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>N-301</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>linkName</_0:tpegDescriptorType>
+              </_0:name>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>ALBACETE</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>other</_0:tpegDescriptorType>
+              </_0:name>
+            </_0:from>
+          </_0:tpeglinearLocation>
+          <_0:referencePointLinear>
+            <_0:referencePointPrimaryLocation>
+              <_0:referencePoint>
+                <_0:referencePointIdentifier>Tramo_Invive_2_ini</_0:referencePointIdentifier>
+                <_0:administrativeArea>
+                  <_0:value lang="es">ALBACETE</_0:value>
+                </_0:administrativeArea>
+                <_0:roadName>
+                  <_0:value>N-301</_0:value>
+                </_0:roadName>
+                <_0:roadNumber>N-301</_0:roadNumber>
+                <_0:directionRelative>both</_0:directionRelative>
+                <_0:referencePointDistance>277510.0</_0:referencePointDistance>
+              </_0:referencePoint>
+            </_0:referencePointPrimaryLocation>
+            <_0:referencePointSecondaryLocation>
+              <_0:referencePoint>
+                <_0:referencePointIdentifier>Tramo_Invive_2_fin</_0:referencePointIdentifier>
+                <_0:administrativeArea>
+                  <_0:value lang="es">ALBACETE</_0:value>
+                </_0:administrativeArea>
+                <_0:roadName>
+                  <_0:value>N-301</_0:value>
+                </_0:roadName>
+                <_0:roadNumber>N-301</_0:roadNumber>
+                <_0:directionRelative>both</_0:directionRelative>
+                <_0:referencePointDistance>300900.0</_0:referencePointDistance>
+              </_0:referencePoint>
+            </_0:referencePointSecondaryLocation>
+          </_0:referencePointLinear>
+        </_0:predefinedLocation>
+      </_0:predefinedLocation>
+      <_0:predefinedLocation id="GUID_Tramo_Invive_3">
+        <_0:predefinedLocation xsi:type="_0:Linear">
+          <_0:tpeglinearLocation>
+            <_0:tpegDirection>bothWays</_0:tpegDirection>
+            <_0:tpegLocationType>segment</_0:tpegLocationType>
+            <_0:to xsi:type="_0:TPEGNonJunctionPoint">
+              <_0:pointCoordinates>
+                <_0:latitude>38.53716</_0:latitude>
+                <_0:longitude>-1.68871</_0:longitude>
+              </_0:pointCoordinates>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>CM-412</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>linkName</_0:tpegDescriptorType>
+              </_0:name>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>ALBACETE</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>other</_0:tpegDescriptorType>
+              </_0:name>
+            </_0:to>
+            <_0:from xsi:type="_0:TPEGNonJunctionPoint">
+              <_0:pointCoordinates>
+                <_0:latitude>38.87765</_0:latitude>
+                <_0:longitude>-1.11824</_0:longitude>
+              </_0:pointCoordinates>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>CM-412</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>linkName</_0:tpegDescriptorType>
+              </_0:name>
+              <_0:name>
+                <_0:descriptor>
+                  <_0:value>ALBACETE</_0:value>
+                </_0:descriptor>
+                <_0:tpegDescriptorType>other</_0:tpegDescriptorType>
+              </_0:name>
+            </_0:from>
+          </_0:tpeglinearLocation>
+          <_0:referencePointLinear>
+            <_0:referencePointPrimaryLocation>
+              <_0:referencePoint>
+                <_0:referencePointIdentifier>Tramo_Invive_3_ini</_0:referencePointIdentifier>
+                <_0:administrativeArea>
+                  <_0:value lang="es">ALBACETE</_0:value>
+                </_0:administrativeArea>
+                <_0:roadName>
+                  <_0:value>CM-412</_0:value>
+                </_0:roadName>
+                <_0:roadNumber>CM-412</_0:roadNumber>
+                <_0:directionRelative>both</_0:directionRelative>
+                <_0:referencePointDistance>274610.0</_0:referencePointDistance>
+              </_0:referencePoint>
+            </_0:referencePointPrimaryLocation>
+            <_0:referencePointSecondaryLocation>
+              <_0:referencePoint>
+                <_0:referencePointIdentifier>Tramo_Invive_3_fin</_0:referencePointIdentifier>
+                <_0:administrativeArea>
+                  <_0:value lang="es">ALBACETE</_0:value>
+                </_0:administrativeArea>
+                <_0:roadName>
+                  <_0:value>CM-412</_0:value>
+                </_0:roadName>
+                <_0:roadNumber>CM-412</_0:roadNumber>
+                <_0:directionRelative>both</_0:directionRelative>
+                <_0:referencePointDistance>344680.0</_0:referencePointDistance>
+              </_0:referencePoint>
+            </_0:referencePointSecondaryLocation>
+          </_0:referencePointLinear>
+        </_0:predefinedLocation>
+      </_0:predefinedLocation>
+    </_0:predefinedLocationSet>
+  </payloadPublication>
+</d2LogicalModel>

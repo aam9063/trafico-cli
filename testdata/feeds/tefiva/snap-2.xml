@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<d2:payload xmlns:d2="http://datex2.eu/schema/3/d2Payload" xsi:type="loc:PredefinedLocationsPublication" lang="es" modelBaseVersion="3" xmlns:com="http://datex2.eu/schema/3/common" xmlns:tro="http://datex2.eu/schema/3/trafficRegulation" xmlns:loc="http://datex2.eu/schema/3/locationReferencing" xmlns:roa="http://datex2.eu/schema/3/roadTrafficData" xmlns:egi="http://datex2.eu/schema/3/energyInfrastructure" xmlns:comx="http://datex2.eu/schema/3/commonExtension" xmlns:fac="http://datex2.eu/schema/3/facilities" xmlns:locx="http://datex2.eu/schema/3/locationExtension" xmlns:vms="http://datex2.eu/schema/3/vms" xmlns:sit="http://datex2.eu/schema/3/situation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <com:feedDescription>
+        <com:values>
+            <com:value lang="es">Publicación TEFIVA: Tramos con especial frecuencia de incidentes viales con implicación de animales en la RCE</com:value>
+        </com:values>
+    </com:feedDescription>
+    <com:publicationTime>2025-07-21T13:24:35.430+02:00</com:publicationTime>
+    <com:publicationCreator>
+        <com:country>ES</com:country>
+        <com:nationalIdentifier>dgt</com:nationalIdentifier>
+    </com:publicationCreator>
+    <loc:headerInformation>
+        <com:informationStatus>real</com:informationStatus>
+    </loc:headerInformation>
+<!-- Fixture trimmed from the live DGT feed. Data: DGT, Punto de Acceso Nacional (CC BY). -->
+    <loc:predefinedLocationReference xsi:type="loc:PredefinedLocation" id="HUELVA_N-433_71400.0" version="20250721">
+        <loc:location xsi:type="loc:SingleRoadLinearLocation">
+            <loc:supplementaryPositionalDescription>
+                <loc:lengthAffected>1.7</loc:lengthAffected>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegLinearLocation>
+                <loc:tpegDirection>bothWays</loc:tpegDirection>
+                <loc:tpegLinearLocationType>segment</loc:tpegLinearLocationType>
+                <loc:to xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>37.82849</loc:latitude>
+                        <loc:longitude>-6.442522</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">N-433</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">HUELVA</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">N-433</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:to>
+                <loc:from xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>37.815742</loc:latitude>
+                        <loc:longitude>-6.436001</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">N-433</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">HUELVA</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">N-433</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:from>
+            </loc:tpegLinearLocation>
+            <loc:linearWithinLinearElement>
+                <loc:administrativeAreaOfLinearSection>
+                    <com:values>
+                        <com:value lang="es">HUELVA</com:value>
+                    </com:values>
+                </loc:administrativeAreaOfLinearSection>
+                <loc:directionRelativeOnLinearSection>both</loc:directionRelativeOnLinearSection>
+                <loc:linearElement>
+                    <loc:roadName>
+                        <com:values>
+                            <com:value lang="es">N-433</com:value>
+                        </com:values>
+                    </loc:roadName>
+                </loc:linearElement>
+                <loc:fromPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>71400.0</loc:distanceAlong>
+                </loc:fromPoint>
+                <loc:toPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>73100.0</loc:distanceAlong>
+                </loc:toPoint>
+            </loc:linearWithinLinearElement>
+        </loc:location>
+    </loc:predefinedLocationReference>
+    <loc:predefinedLocationReference xsi:type="loc:PredefinedLocation" id="HUELVA_N-435_201600.0" version="20250721">
+        <loc:location xsi:type="loc:SingleRoadLinearLocation">
+            <loc:supplementaryPositionalDescription>
+                <loc:lengthAffected>1.0</loc:lengthAffected>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegLinearLocation>
+                <loc:tpegDirection>bothWays</loc:tpegDirection>
+                <loc:tpegLinearLocationType>segment</loc:tpegLinearLocationType>
+                <loc:to xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>37.48555</loc:latitude>
+                        <loc:longitude>-6.809799</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">N-435</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">HUELVA</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">N-435</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:to>
+                <loc:from xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>37.493465</loc:latitude>
+                        <loc:longitude>-6.804903</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">N-435</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">HUELVA</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">N-435</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:from>
+            </loc:tpegLinearLocation>
+            <loc:linearWithinLinearElement>
+                <loc:administrativeAreaOfLinearSection>
+                    <com:values>
+                        <com:value lang="es">HUELVA</com:value>
+                    </com:values>
+                </loc:administrativeAreaOfLinearSection>
+                <loc:directionRelativeOnLinearSection>both</loc:directionRelativeOnLinearSection>
+                <loc:linearElement>
+                    <loc:roadName>
+                        <com:values>
+                            <com:value lang="es">N-435</com:value>
+                        </com:values>
+                    </loc:roadName>
+                </loc:linearElement>
+                <loc:fromPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>201600.0</loc:distanceAlong>
+                </loc:fromPoint>
+                <loc:toPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>202600.0</loc:distanceAlong>
+                </loc:toPoint>
+            </loc:linearWithinLinearElement>
+        </loc:location>
+    </loc:predefinedLocationReference>
+    <loc:predefinedLocationReference xsi:type="loc:PredefinedLocation" id="GRANADA_A-44_156400.0" version="20250721">
+        <loc:location xsi:type="loc:SingleRoadLinearLocation">
+            <loc:supplementaryPositionalDescription>
+                <loc:lengthAffected>1.6</loc:lengthAffected>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegLinearLocation>
+                <loc:tpegDirection>bothWays</loc:tpegDirection>
+                <loc:tpegLinearLocationType>segment</loc:tpegLinearLocationType>
+                <loc:to xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>36.966824</loc:latitude>
+                        <loc:longitude>-3.556463</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">A-44</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GRANADA</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">A-44</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:to>
+                <loc:from xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>36.978752</loc:latitude>
+                        <loc:longitude>-3.566082</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">A-44</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GRANADA</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">A-44</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:from>
+            </loc:tpegLinearLocation>
+            <loc:linearWithinLinearElement>
+                <loc:administrativeAreaOfLinearSection>
+                    <com:values>
+                        <com:value lang="es">GRANADA</com:value>
+                    </com:values>
+                </loc:administrativeAreaOfLinearSection>
+                <loc:directionRelativeOnLinearSection>both</loc:directionRelativeOnLinearSection>
+                <loc:linearElement>
+                    <loc:roadName>
+                        <com:values>
+                            <com:value lang="es">A-44</com:value>
+                        </com:values>
+                    </loc:roadName>
+                </loc:linearElement>
+                <loc:fromPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>156400.0</loc:distanceAlong>
+                </loc:fromPoint>
+                <loc:toPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>158000.0</loc:distanceAlong>
+                </loc:toPoint>
+            </loc:linearWithinLinearElement>
+        </loc:location>
+    </loc:predefinedLocationReference>
+</d2:payload>

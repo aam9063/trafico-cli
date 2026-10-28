@@ -43,6 +43,11 @@ Con estos mismos datos hay apps web (HayTrafico, trafico.live), capas JSON para 
 
 ## 2. La fuente de datos (confirmado)
 
+> **Actualizado el 2026-10-28 (SPIKE-01).** Las URLs de todos los datasets, sus tamaños, cabeceras
+> y la estructura real de cada registro están medidos en `docs/feeds.md`, que manda sobre esta
+> sección. En resumen: 7 feeds confirmados, todos CC BY salvo SCT, sin `ETag` ni `Last-Modified`,
+> y **tres dialectos DATEX II distintos** (v3.7, v3 y v1.0) que obligan a tres modelos de parseo.
+
 | Dato | Estado |
 |---|---|
 | Publicador | DGT, Punto de Acceso Nacional de tráfico (`nap.dgt.es`) |
@@ -135,6 +140,11 @@ Reglas:
 - `province` y `municipality` solo si vienen en el feed. **No se geocodifica en la v1.**
 
 ### 4.2 Panel, radar y tramo
+
+> **Actualizado el 2026-10-28 (SPIKE-01).** Varios campos de esta lista no existen en el feed.
+> Ver `docs/feeds.md` §4.3, §5, §6, §7 y §8: no hay `speed_limit`, no hay "1 de 3" carriles, no
+> hay etiqueta de destino en incidencias y el PK de radares y tramos viene en metros
+> (`referencePointDistance`) o codificado en el id del tramo.
 
 - **Panel:** `id`, `road`, `pk`, `direction`, `location`, `message` (texto mostrado ahora, o `null` si apagado), `message_updated_at`.
 - **Radar fijo:** `id`, `road`, `pk`, `direction`, `location`, `type` si viene, `speed_limit` si viene.
