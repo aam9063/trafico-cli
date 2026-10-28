@@ -390,3 +390,284 @@ max_age = "10m"
 		t.Fatalf("Load() of a 0600 config file error = %v", err)
 	}
 }
+
+// --- ROUTE-01: saved routes under [routes.<name>] --------------------------
+
+func TestLoadRoundTripsRoutes(t *testing.T) {
+	cfg := Default()
+	cfg.Routes["trabajo"] = Route{
+		Direction: "both",
+		Segments:  []string{"A-7:102-118", "CV-86:0-6"},
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := Route{Direction: "both", Segments: []string{"A-7:102-118", "CV-86:0-6"}}
+	if got := reloaded.Routes["trabajo"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("routes[trabajo] = %+v, want %+v", got, want)
+	}
+	if len(reloaded.Routes) != 1 {
+		t.Errorf("Load() has %d routes, want 1", len(reloaded.Routes))
+	}
+}
+
+func TestLoadWithRoutesKeepsOtherSections(t *testing.T) {
+	path := writeConfigFile(t, `
+[feeds.dgt-signs]
+url = "https://example.com/signs.xml"
+enabled = true
+
+[places]
+casa = "38.3452,-0.4810"
+
+[routes.trabajo]
+direction = "positive"
+segments = ["A-7:102-118", "N-332:50-70"]
+
+[stale]
+max_age = "15m"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.Feeds["dgt-signs"].Enabled || cfg.Feeds["dgt-signs"].URL != "https://example.com/signs.xml" {
+		t.Errorf("feeds section lost or wrong: %+v", cfg.Feeds["dgt-signs"])
+	}
+	if cfg.Places["casa"] != "38.3452,-0.4810" {
+		t.Errorf("places section lost or wrong: %v", cfg.Places)
+	}
+	if cfg.Stale.MaxAge != Duration(15*time.Minute) {
+		t.Errorf("stale section lost or wrong: %s", cfg.Stale.MaxAge)
+	}
+	route := cfg.Routes["trabajo"]
+	if route.Direction != "positive" {
+		t.Errorf("route direction = %q, want positive", route.Direction)
+	}
+	if want := []string{"A-7:102-118", "N-332:50-70"}; !reflect.DeepEqual(route.Segments, want) {
+		t.Errorf("route segments = %v, want %v", route.Segments, want)
+	}
+}
+
+func TestLoadRejectsMalformedRoutes(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		wantErr string
+	}{
+		{
+			name: "segment without the ROAD:FROM-TO shape",
+			content: `
+[routes.trabajo]
+segments = ["A-7"]
+`,
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "inverted kilometre range",
+			content: `
+[routes.trabajo]
+segments = ["A-7:118-102"]
+`,
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "empty segments list",
+			content: `
+[routes.trabajo]
+direction = "both"
+segments = []
+`,
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "missing segments key",
+			content: `
+[routes.trabajo]
+direction = "both"
+`,
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "non-numeric kilometre point",
+			content: `
+[routes.trabajo]
+segments = ["A-7:a-b"]
+`,
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "unknown direction",
+			content: `
+[routes.trabajo]
+direction = "north"
+segments = ["A-7:100-140"]
+`,
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "name with a space",
+			content: `
+[routes."mi ruta"]
+segments = ["A-7:100-140"]
+`,
+			wantErr: `route name "mi ruta"`,
+		},
+		{
+			name: "name with a slash",
+			content: `
+[routes."a/b"]
+segments = ["A-7:100-140"]
+`,
+			wantErr: `route name "a/b"`,
+		},
+		{
+			name: "name that starts with a dot",
+			content: `
+[routes."../escape"]
+segments = ["A-7:100-140"]
+`,
+			wantErr: `route name "../escape"`,
+		},
+		{
+			name: "empty name",
+			content: `
+[routes.""]
+segments = ["A-7:100-140"]
+`,
+			wantErr: `route name ""`,
+		},
+		{
+			name: "unknown key inside a route",
+			content: `
+[routes.trabajo]
+segmentz = ["A-7:100-140"]
+`,
+			wantErr: "missing in the target struct",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeConfigFile(t, tt.content)
+			_, err := Load(path)
+			if err == nil {
+				t.Fatalf("Load() = nil error, want an error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("Load() error = %q, want it to contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateRouteFailures(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(cfg *Config)
+		wantErr string
+	}{
+		{
+			name: "no segments",
+			mutate: func(cfg *Config) {
+				cfg.Routes["trabajo"] = Route{Direction: "both"}
+			},
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "bad segment",
+			mutate: func(cfg *Config) {
+				cfg.Routes["trabajo"] = Route{Segments: []string{"A-7:100"}}
+			},
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "bad direction",
+			mutate: func(cfg *Config) {
+				cfg.Routes["trabajo"] = Route{Direction: "up", Segments: []string{"A-7:100-140"}}
+			},
+			wantErr: `route "trabajo"`,
+		},
+		{
+			name: "empty direction means both",
+			mutate: func(cfg *Config) {
+				cfg.Routes["trabajo"] = Route{Segments: []string{"A-7:100-140"}}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			tt.mutate(cfg)
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() = %v, want an error containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseRouteSegment(t *testing.T) {
+	tests := []struct {
+		name      string
+		segment   string
+		wantRoad  string
+		wantFrom  float64
+		wantTo    float64
+		wantError bool
+	}{
+		{name: "plain segment", segment: "A-7:102-118", wantRoad: "A-7", wantFrom: 102, wantTo: 118},
+		{name: "road name is normalized", segment: "a7:100-140", wantRoad: "A-7", wantFrom: 100, wantTo: 140},
+		{name: "spaces are tolerated", segment: " N-332 : 50 - 70 ", wantRoad: "N-332", wantFrom: 50, wantTo: 70},
+		{name: "decimal kilometre points", segment: "CV-86:0.5-6.25", wantRoad: "CV-86", wantFrom: 0.5, wantTo: 6.25},
+		{name: "no colon", segment: "A-7", wantError: true},
+		{name: "empty road", segment: ":50-70", wantError: true},
+		{name: "no dash in the range", segment: "A-7:100", wantError: true},
+		{name: "non-numeric bound", segment: "A-7:a-b", wantError: true},
+		{name: "inverted range", segment: "A-7:118-102", wantError: true},
+		{name: "NaN bound", segment: "A-7:NaN-10", wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseRouteSegment(tt.segment)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("ParseRouteSegment(%q) = %+v, want an error", tt.segment, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseRouteSegment(%q) error = %v", tt.segment, err)
+			}
+			if got.Road != tt.wantRoad || got.From != tt.wantFrom || got.To != tt.wantTo {
+				t.Errorf("ParseRouteSegment(%q) = %+v, want road %q from %g to %g", tt.segment, got, tt.wantRoad, tt.wantFrom, tt.wantTo)
+			}
+		})
+	}
+}
+
+func TestValidateRouteName(t *testing.T) {
+	valid := []string{"trabajo", "casa", "A-7", "r1", "mi.ruta_2", "x"}
+	for _, name := range valid {
+		if err := ValidateRouteName(name); err != nil {
+			t.Errorf("ValidateRouteName(%q) = %v, want nil", name, err)
+		}
+	}
+	invalid := []string{"", "mi ruta", "a/b", "../escape", ".oculto", "-guion", "muy-largo-" + strings.Repeat("x", 64)}
+	for _, name := range invalid {
+		if err := ValidateRouteName(name); err == nil {
+			t.Errorf("ValidateRouteName(%q) = nil, want an error", name)
+		}
+	}
+}

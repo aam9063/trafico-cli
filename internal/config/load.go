@@ -16,10 +16,20 @@ import (
 // defaults needs (an explicit enabled = false must not restore the default
 // true, and an absent enabled must keep it).
 type rawConfig struct {
-	Feeds  map[string]rawFeed `toml:"feeds"`
-	Places map[string]string  `toml:"places"`
-	Stale  *rawStale          `toml:"stale"`
-	Sinks  map[string]rawSink `toml:"sinks"`
+	Feeds  map[string]rawFeed  `toml:"feeds"`
+	Places map[string]string   `toml:"places"`
+	Routes map[string]rawRoute `toml:"routes"`
+	Stale  *rawStale           `toml:"stale"`
+	Sinks  map[string]rawSink  `toml:"sinks"`
+}
+
+// rawRoute mirrors Route with optional fields so the merge can tell "the
+// file set this" from "the file left this at its zero value" (a missing
+// segments key must land as a route with no segments, which Validate then
+// rejects loudly).
+type rawRoute struct {
+	Direction *string   `toml:"direction"`
+	Segments  *[]string `toml:"segments"`
 }
 
 type rawFeed struct {
@@ -102,6 +112,17 @@ func decode(data []byte) (*Config, error) {
 
 	for name, value := range raw.Places {
 		cfg.Places[name] = value
+	}
+
+	for name, route := range raw.Routes {
+		merged := Route{}
+		if route.Direction != nil {
+			merged.Direction = *route.Direction
+		}
+		if route.Segments != nil {
+			merged.Segments = *route.Segments
+		}
+		cfg.Routes[name] = merged
 	}
 
 	if raw.Stale != nil && raw.Stale.MaxAge != nil {
