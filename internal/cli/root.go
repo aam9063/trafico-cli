@@ -6,6 +6,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/aam9063/trafico-cli/internal/errs"
 
@@ -25,18 +26,46 @@ func NewRootCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// An invalid flag is an invalid argument: it must exit with code 2, never
+	// with the internal code (ARRANQUE section 6.3).
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return errs.NewUsage(err.Error())
+	})
 	root.AddCommand(newVersionCommand())
 	return root
 }
 
 // Execute runs the root command and returns the process exit code.
-// With SilenceErrors set, the application layer owns error output,
-// so failures map to the internal exit code for now.
+// With SilenceErrors set, the application layer owns error output: on error
+// it writes the JSON error envelope (ARRANQUE section 6.3) to stderr exactly
+// once and returns the exit code the error carries.
 func Execute() errs.ExitCode {
-	if err := NewRootCommand().Execute(); err != nil {
-		return errs.ExitInternal
+	return executeRoot(NewRootCommand(), os.Args[1:])
+}
+
+// executeRoot runs root with args and maps its error to the JSON envelope and
+// the process exit code. stdout stays empty on failure; stderr carries exactly
+// one envelope line.
+//
+// cobra reports an unknown command from Find rather than from Execute, so both
+// paths are checked to keep invalid arguments on exit code 2.
+func executeRoot(root *cobra.Command, args []string) errs.ExitCode {
+	root.SetArgs(args)
+	if _, _, err := root.Find(args); err != nil {
+		return report(root, errs.NewUsage(err.Error()))
+	}
+	if err := root.Execute(); err != nil {
+		return report(root, err)
 	}
 	return errs.ExitSuccess
+}
+
+// report writes the error envelope once and returns the exit code it carries.
+func report(root *cobra.Command, err error) errs.ExitCode {
+	if wErr := errs.WriteError(root.ErrOrStderr(), err); wErr != nil {
+		fmt.Fprintln(root.ErrOrStderr(), wErr)
+	}
+	return errs.ExitCodeFor(err)
 }
 
 func newVersionCommand() *cobra.Command {
