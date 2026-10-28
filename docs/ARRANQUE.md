@@ -602,7 +602,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: ./scripts/require_review.sh "${{ github.event.pull_request.title }}"
+      - run: ./scripts/require_review.sh "$PR_TITLE"
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
   live:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest

@@ -31,6 +31,24 @@ jobs:
         if: runner.os == 'Windows'
         run: bash scripts/check.sh
 
+  # Review gate (docs/ARRANQUE.md §10.5, §12): a PR that names a task ID must
+  # carry its review report. Informational for reviewers and blocking for the
+  # PR; the build jobs deliberately do not depend on it.
+  review-report:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Review report gate
+        # The PR title is attacker-controlled text. Interpolating it directly
+        # into `run:` would let a title like $(curl ...|sh) execute in the
+        # runner before the script ever sees it, so it travels via env and is
+        # referenced as a quoted shell variable instead.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/require_review.sh "$PR_TITLE"
+
   live:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
