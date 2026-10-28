@@ -13,12 +13,19 @@ func testLookup(env map[string]string) EnvLookup {
 }
 
 // baseEnv provides the fallback variables of every platform so that the cases
-// below only need to set the XDG variable under test.
+// baseEnv provides the fallback variables of every platform so that the cases
+// below only need to set the XDG variable under test. HOME is the POSIX
+// fallback and AppData/LocalAppData the Windows one: carrying both keeps the
+// table platform-agnostic instead of silently depending on the host.
 func baseEnv() map[string]string {
-	return map[string]string{"AppData": `C:\AppData`, "LocalAppData": `C:\LocalAppData`}
+	return map[string]string{
+		"HOME":         "/home/test",
+		"AppData":      `C:\AppData`,
+		"LocalAppData": `C:\LocalAppData`,
+	}
 }
 
-// wrapBase merges extra environment entries over windowsBaseEnv so the
+// wrapBase merges extra environment entries over baseEnv so the
 // fallback of either platform resolves without touching the real environment.
 func wrapBase(extra map[string]string) map[string]string {
 	env := baseEnv()
@@ -203,5 +210,55 @@ func TestEnsureDirsCreatesDirectories(t *testing.T) {
 		if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 			t.Errorf("directory %s has mode %04o, want 0700", dir, info.Mode().Perm())
 		}
+	}
+}
+
+// TestUnixBaseFallback exercises the POSIX fallback directly, so the Linux
+// behaviour is covered even when the suite runs on Windows. Without this, a
+// POSIX-only regression is invisible locally and only CI can catch it.
+func TestUnixBaseFallback(t *testing.T) {
+	// The XDG variable wins when it holds an absolute path. The path comes from
+	// TempDir so it is absolute on every platform: this helper is about the
+	// precedence rule, not about POSIX path syntax.
+	abs := t.TempDir()
+	got, err := unixBase(testLookup(map[string]string{
+		"XDG_DATA_HOME": abs,
+		"HOME":          filepath.Join(string(filepath.Separator), "home", "test"),
+	}), "XDG_DATA_HOME", filepath.Join(".local", "share"))
+	if err != nil {
+		t.Fatalf("unixBase() error = %v", err)
+	}
+	if got != abs {
+		t.Errorf("unixBase() = %q, want %q", got, abs)
+	}
+
+	// HOME plus the conventional suffix is the fallback.
+	home := filepath.Join(string(filepath.Separator), "home", "test")
+	got, err = unixBase(testLookup(map[string]string{"HOME": home}),
+		"XDG_DATA_HOME", filepath.Join(".local", "share"))
+	if err != nil {
+		t.Fatalf("unixBase() fallback error = %v", err)
+	}
+	if want := filepath.Join(home, ".local", "share"); got != want {
+		t.Errorf("unixBase() fallback = %q, want %q", got, want)
+	}
+
+	// With neither set there is no base to guess from, and it must say so.
+	if _, err := unixBase(testLookup(nil), "XDG_DATA_HOME", ".cache"); err == nil {
+		t.Fatal("unixBase() without XDG nor HOME, want an error")
+	}
+}
+
+// TestWindowsBaseFallback covers the other platform's path the same way.
+func TestWindowsBaseFallback(t *testing.T) {
+	got, err := windowsBase(testLookup(map[string]string{"AppData": `C:\AppData`}), "XDG_CONFIG_HOME", "AppData")
+	if err != nil {
+		t.Fatalf("windowsBase() error = %v", err)
+	}
+	if want := `C:\AppData`; got != want {
+		t.Errorf("windowsBase() = %q, want %q", got, want)
+	}
+	if _, err := windowsBase(testLookup(nil), "XDG_CONFIG_HOME", "AppData"); err == nil {
+		t.Fatal("windowsBase() without XDG nor AppData, want an error")
 	}
 }
