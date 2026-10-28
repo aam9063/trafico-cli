@@ -134,7 +134,7 @@ d2:payload
 | `start_time` / `end_time` | `com:overallStartTime` (100 %) / `com:overallEndTime` (64,6 %) |
 | `updated_at` | `sit:situationRecordVersionTime` |
 | `subtype_raw` | `sit:causeType` + el hijo de `sit:detailedCauseType` |
-| `lanes_affected` (parcial) | `loc:laneUsage`: `rightLane`, `leftLane`, `allLanesCompleteCarriageway`, `middleLane`, `tidalFlowLane`, `centralReservation`, `turningLane`, `carPoolLane` |
+| `lanes_affected` (parcial) | `loc:laneUsage`: `rightLane`, `leftLane`, `allLanesCompleteCarriageway`, `middleLane`, `tidalFlowLane`, `centralReservation`, `turningLane`, `carPoolLane`, `_extended`. La lista **no es cerrada**: los valores se conservan tal cual llegan, sin filtrar los que no estén en el catálogo DATEX II |
 
 ### 4.3 Campos que NO existen (no inventar)
 
