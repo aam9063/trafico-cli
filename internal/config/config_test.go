@@ -417,6 +417,32 @@ func TestLoadRoundTripsRoutes(t *testing.T) {
 	}
 }
 
+// TestLoadRoundTripsTelegramChatID pins the chat_id plumbing of the
+// telegram webhook template: a config written by Save with a telegram sink
+// carries its chat_id, and Load reads it back intact (the strict decoder
+// knows the field). A telegram sink without chat_id round-trips with it
+// empty, like any other unset field.
+func TestLoadRoundTripsTelegramChatID(t *testing.T) {
+	cfg := Default()
+	cfg.Sinks["telegram"] = Sink{Type: "webhook", URL: "https://example.com/notify", Template: "telegram", ChatID: "12345678"}
+	cfg.Sinks["sin-chat"] = Sink{Type: "webhook", URL: "https://example.com/notify", Template: "telegram"}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := reloaded.Sinks["telegram"]; got != cfg.Sinks["telegram"] {
+		t.Errorf("sinks[telegram] = %+v, want %+v", got, cfg.Sinks["telegram"])
+	}
+	if got := reloaded.Sinks["sin-chat"]; got.ChatID != "" {
+		t.Errorf("chat_id of a sink without one = %q, want empty", got.ChatID)
+	}
+}
+
 func TestLoadWithRoutesKeepsOtherSections(t *testing.T) {
 	path := writeConfigFile(t, `
 [feeds.dgt-signs]

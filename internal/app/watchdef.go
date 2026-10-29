@@ -74,6 +74,10 @@ type WatchSpec struct {
 	WindowSpecs []string
 	// MinSeverity is the severity floor: "", "low", "medium" or "high".
 	MinSeverity string
+	// EmitInitial is the stored opt-in of --emit-initial (§5.5): the watch
+	// announces with incident.new what is already happening at its first
+	// check. The default (false) is the silent baseline of S3.
+	EmitInitial bool
 	// Sinks are the notification destinations, by config sink name.
 	Sinks []string
 	// Interval is the polling interval (≥ watch.MinInterval, spec S6).
@@ -92,7 +96,7 @@ type WatchSpec struct {
 // records history (its events are appended to the log and never delivered),
 // because the spec does not mandate --notify. `watch list` shows it like
 // any other watch, so the decision stays visible to the user.
-func ParseWatchSpec(name string, target WatchTarget, windowSpecs []string, minSeverity string, sinks []string, interval time.Duration, cfg *config.Config) (WatchSpec, error) {
+func ParseWatchSpec(name string, target WatchTarget, windowSpecs []string, minSeverity string, sinks []string, interval time.Duration, emitInitial bool, cfg *config.Config) (WatchSpec, error) {
 	if cfg == nil {
 		return WatchSpec{}, errs.NewInternal("no hay configuración para definir la vigilancia")
 	}
@@ -134,6 +138,7 @@ func ParseWatchSpec(name string, target WatchTarget, windowSpecs []string, minSe
 		Windows:     windows,
 		WindowSpecs: windowSpecs,
 		MinSeverity: min,
+		EmitInitial: emitInitial,
 		Sinks:       sinks,
 		Interval:    interval,
 	}, nil
@@ -309,6 +314,7 @@ func (spec WatchSpec) storeWatch() store.Watch {
 		Target:       storeTarget(spec.Target),
 		Windows:      spec.WindowSpecs,
 		MinSeverity:  spec.MinSeverity,
+		EmitInitial:  spec.EmitInitial,
 		Sinks:        spec.Sinks,
 		IntervalSecs: int(spec.Interval / time.Second),
 		CreatedAt:    spec.CreatedAt,
@@ -388,6 +394,7 @@ func SpecFromStore(w store.Watch, cfg *config.Config) (WatchSpec, error) {
 		Windows:     windows,
 		WindowSpecs: w.Windows,
 		MinSeverity: min,
+		EmitInitial: w.EmitInitial,
 		Sinks:       w.Sinks,
 		Interval:    interval,
 		CreatedAt:   w.CreatedAt,

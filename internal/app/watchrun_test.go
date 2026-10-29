@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/aam9063/trafico-cli/internal/errs"
 	"github.com/aam9063/trafico-cli/internal/feeds"
 	"github.com/aam9063/trafico-cli/internal/store"
+	"github.com/aam9063/trafico-cli/internal/watch"
 	"github.com/aam9063/trafico-cli/internal/window"
 )
 
@@ -135,7 +137,7 @@ func newWatchFetcher(t *testing.T, cfg *config.Config, now time.Time) *feeds.Fet
 // CLI uses, failing the test on any error.
 func saveTestWatch(t *testing.T, st *store.Store, cfg *config.Config, name string, target WatchTarget, windowSpec string, sinks []string) WatchSpec {
 	t.Helper()
-	spec, err := ParseWatchSpec(name, target, []string{windowSpec}, "", sinks, 5*time.Minute, cfg)
+	spec, err := ParseWatchSpec(name, target, []string{windowSpec}, "", sinks, 5*time.Minute, false, cfg)
 	if err != nil {
 		t.Fatalf("ParseWatchSpec(%s): %v", name, err)
 	}
@@ -175,6 +177,84 @@ func TestValidateSinksUsableRejectsUnbuildableSink(t *testing.T) {
 	}
 	if !strings.Contains(errsErr.Message, "telegram") {
 		t.Errorf("error message %q does not name the telegram sink problem", errsErr.Message)
+	}
+	if !strings.Contains(errsErr.Message, "chat_id") {
+		t.Errorf("error message %q does not name the missing chat_id field", errsErr.Message)
+	}
+}
+
+// TestSinkFromConfigBuildsTelegramWithChatID pins the sink construction of
+// the telegram webhook template: with a chat_id the sink builds and carries
+// it into the delivery body; without one it is an error naming the field,
+// because a telegram sink without a chat_id can never succeed.
+func TestSinkFromConfigBuildsTelegramWithChatID(t *testing.T) {
+	sink, err := sinkFromConfig("telegram", config.Sink{Type: "webhook", Template: "telegram", URL: "http://127.0.0.1:1", ChatID: "12345678"})
+	if err != nil {
+		t.Fatalf("sinkFromConfig(telegram with chat_id) = %v, want nil", err)
+	}
+	webhook, ok := sink.(*watch.WebhookSink)
+	if !ok {
+		t.Fatalf("sinkFromConfig(telegram) = %T, want *watch.WebhookSink", sink)
+	}
+	if webhook.Style != watch.StyleTelegram || webhook.ChatID != "12345678" {
+		t.Errorf("built sink = %+v, want the telegram style with the configured chat_id", webhook)
+	}
+
+	_, err = sinkFromConfig("telegram", config.Sink{Type: "webhook", Template: "telegram", URL: "http://127.0.0.1:1"})
+	if err == nil {
+		t.Fatalf("sinkFromConfig(telegram without chat_id) = nil error, want an error naming chat_id")
+	}
+	if !strings.Contains(err.Error(), "chat_id") {
+		t.Errorf("error %q does not name the chat_id field", err.Error())
+	}
+}
+
+// TestRunAllDeliversThroughTelegramSinkWithChatID pins the wiring end to
+// end: a telegram sink with chat_id is constructible from the config, and a
+// pending event delivered through it POSTs the chat_id + text body the
+// Telegram API expects. The baseline stays silent (S3).
+func TestRunAllDeliversThroughTelegramSinkWithChatID(t *testing.T) {
+	srv := newWatchServer(t)
+	cfg := runConfig(srv.srv.URL)
+	cfg.Sinks["telegram"] = config.Sink{Type: "webhook", Template: "telegram", URL: srv.srv.URL + "/notify", ChatID: "12345678"}
+	st, err := store.Open(filepath.Join(t.TempDir(), "trafico.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+	saveTestWatch(t, st, cfg, "tg", WatchTarget{Kind: store.WatchKindRoute, Route: "trabajo"},
+		watchWindowAround(watchClock, 30, 60), []string{"telegram"})
+
+	// First cycle: silent baseline, nothing delivered.
+	if _, err := RunAll(context.Background(), cfg, newWatchFetcher(t, cfg, watchClock), st); err != nil {
+		t.Fatalf("RunAll (baseline): %v", err)
+	}
+	if posts := srv.notifyPosts(); len(posts) != 0 {
+		t.Fatalf("baseline delivered %d posts, want 0", len(posts))
+	}
+
+	// Second cycle: a new incident is announced through the telegram sink.
+	srv.setBody(swapIncidentID(t, snapshotFeed(t), "22365494", "9999999"))
+	result, err := RunAll(context.Background(), cfg, newWatchFetcher(t, cfg, watchClock.Add(6*time.Minute)), st)
+	if err != nil {
+		t.Fatalf("RunAll (second): %v", err)
+	}
+	if result.Delivered != 1 {
+		t.Fatalf("delivered = %d, want 1", result.Delivered)
+	}
+	posts := srv.notifyPosts()
+	if len(posts) != 1 {
+		t.Fatalf("telegram sink received %d posts, want 1", len(posts))
+	}
+	var body map[string]string
+	if err := json.Unmarshal(posts[0], &body); err != nil {
+		t.Fatalf("telegram body is not JSON: %v (%q)", err, posts[0])
+	}
+	if body["chat_id"] != "12345678" {
+		t.Errorf("body chat_id = %q, want 12345678", body["chat_id"])
+	}
+	if body["text"] == "" {
+		t.Errorf("body text is empty, want the rendered notification")
 	}
 }
 

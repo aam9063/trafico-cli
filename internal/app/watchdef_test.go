@@ -27,7 +27,7 @@ func watchConfig() *config.Config {
 // starts from, failing the test on any error.
 func parseRouteWatch(t *testing.T, cfg *config.Config, target WatchTarget, windowSpecs []string, minSeverity string, sinks []string) WatchSpec {
 	t.Helper()
-	spec, err := ParseWatchSpec("trabajo", target, windowSpecs, minSeverity, sinks, 5*time.Minute, cfg)
+	spec, err := ParseWatchSpec("trabajo", target, windowSpecs, minSeverity, sinks, 5*time.Minute, false, cfg)
 	if err != nil {
 		t.Fatalf("ParseWatchSpec: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestParseWatchSpecNearCoordinates(t *testing.T) {
 func TestParseWatchSpecRouteMissingIsNotFound(t *testing.T) {
 	cfg := watchConfig()
 	_, err := ParseWatchSpec("trabajo", WatchTarget{Kind: store.WatchKindRoute, Route: "inexistente"},
-		[]string{"lun-vie 07:00-09:00"}, "", []string{"phone"}, 5*time.Minute, cfg)
+		[]string{"lun-vie 07:00-09:00"}, "", []string{"phone"}, 5*time.Minute, false, cfg)
 	if err == nil {
 		t.Fatal("ParseWatchSpec on a missing route succeeded, want not_found")
 	}
@@ -195,7 +195,7 @@ func TestParseWatchSpecRejectsBadInput(t *testing.T) {
 		{"route without name", "trabajo", WatchTarget{Kind: store.WatchKindRoute}, []string{"lun-vie 07:00-09:00"}, "", []string{"phone"}, 5 * time.Minute},
 	}
 	for _, tc := range cases {
-		_, err := ParseWatchSpec(tc.watch, tc.target, tc.windows, tc.min, tc.sinks, tc.margin, cfg)
+		_, err := ParseWatchSpec(tc.watch, tc.target, tc.windows, tc.min, tc.sinks, tc.margin, false, cfg)
 		if err == nil {
 			t.Errorf("%s: ParseWatchSpec succeeded, want a usage error", tc.name)
 			continue
@@ -220,7 +220,7 @@ func TestSpecRoundTripsThroughStore(t *testing.T) {
 
 	created := time.Date(2026, 10, 29, 8, 30, 0, 0, time.UTC)
 	spec, err := ParseWatchSpec("trabajo", WatchTarget{Kind: store.WatchKindRoute, Route: "trabajo"},
-		[]string{"lun-vie 07:00-09:00", "lun-vie 17:30-19:30"}, "medium", []string{"phone"}, 5*time.Minute, cfg)
+		[]string{"lun-vie 07:00-09:00", "lun-vie 17:30-19:30"}, "medium", []string{"phone"}, 5*time.Minute, false, cfg)
 	if err != nil {
 		t.Fatalf("ParseWatchSpec: %v", err)
 	}
@@ -403,12 +403,62 @@ func TestSpecFromStoreRevalidatesTarget(t *testing.T) {
 func TestParseWatchSpecAllowsZeroSinks(t *testing.T) {
 	cfg := watchConfig()
 	spec, err := ParseWatchSpec("historial", WatchTarget{Kind: store.WatchKindRoad, Road: "A-7"},
-		[]string{"lun-vie 07:00-09:00"}, "", nil, 5*time.Minute, cfg)
+		[]string{"lun-vie 07:00-09:00"}, "", nil, 5*time.Minute, false, cfg)
 	if err != nil {
 		t.Fatalf("ParseWatchSpec with zero sinks: %v", err)
 	}
 	if len(spec.Sinks) != 0 {
 		t.Fatalf("Sinks = %v, want none", spec.Sinks)
+	}
+}
+
+// TestParseWatchSpecEmitInitialRoundTrips checks the --emit-initial opt-in
+// end to end through the definition layer: the parsed spec carries it, the
+// store keeps it, and SpecFromStore reads it back; without the opt-in the
+// choice is off (the silent baseline stays the default, S3).
+func TestParseWatchSpecEmitInitialRoundTrips(t *testing.T) {
+	cfg := watchConfig()
+	st, err := store.Open(stPath(t))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	spec, err := ParseWatchSpec("trabajo", WatchTarget{Kind: store.WatchKindRoute, Route: "trabajo"},
+		[]string{"lun-vie 07:00-09:00"}, "", []string{"phone"}, 5*time.Minute, true, cfg)
+	if err != nil {
+		t.Fatalf("ParseWatchSpec: %v", err)
+	}
+	if !spec.EmitInitial {
+		t.Fatalf("spec.EmitInitial = false, want true")
+	}
+	spec.CreatedAt = time.Date(2026, 10, 29, 8, 30, 0, 0, time.UTC)
+	if err := st.SaveWatch(spec.storeWatch()); err != nil {
+		t.Fatalf("SaveWatch: %v", err)
+	}
+	stored, err := st.Watch("trabajo")
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	if !stored.EmitInitial {
+		t.Errorf("stored EmitInitial = false, want true")
+	}
+	back, err := SpecFromStore(stored, cfg)
+	if err != nil {
+		t.Fatalf("SpecFromStore: %v", err)
+	}
+	if !back.EmitInitial {
+		t.Errorf("round-tripped EmitInitial = false, want true")
+	}
+
+	// Default: without the opt-in the watch stays silent at the baseline.
+	quiet, err := ParseWatchSpec("callada", WatchTarget{Kind: store.WatchKindRoute, Route: "trabajo"},
+		[]string{"lun-vie 07:00-09:00"}, "", []string{"phone"}, 5*time.Minute, false, cfg)
+	if err != nil {
+		t.Fatalf("ParseWatchSpec (quiet): %v", err)
+	}
+	if quiet.EmitInitial {
+		t.Errorf("quiet spec.EmitInitial = true, want false")
 	}
 }
 

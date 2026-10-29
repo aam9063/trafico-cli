@@ -25,7 +25,7 @@ import (
 // PRAGMA user_version. Bump it and add a migration step in applyMigrations
 // whenever the schema changes; a database written by a NEWER binary must be
 // refused rather than silently misread.
-const schemaVersion = 4
+const schemaVersion = 5
 
 // migrationSteps, indexed by the version they migrate FROM, bring a database
 // one version forward. Step 0 creates the base (version-1) schema; every
@@ -70,6 +70,17 @@ var migrationSteps = map[int]func(*sql.Tx) error{
 	3: func(tx *sql.Tx) error {
 		if _, err := tx.Exec("ALTER TABLE watches ADD COLUMN last_check_at TEXT"); err != nil {
 			return fmt.Errorf("no se pudo añadir la columna last_check_at: %w", err)
+		}
+		return nil
+	},
+	// Version 4 → 5: the emit_initial column of the watches table, the
+	// stored opt-in of --emit-initial (docs/ARRANQUE.md §5.5): a watch
+	// created with it announces with incident.new what is already happening
+	// at its first check. The default of every existing row is 0 (false):
+	// the silent baseline stays the default, the flag is the opt-in.
+	4: func(tx *sql.Tx) error {
+		if _, err := tx.Exec("ALTER TABLE watches ADD COLUMN emit_initial INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("no se pudo añadir la columna emit_initial: %w", err)
 		}
 		return nil
 	},
@@ -188,12 +199,12 @@ CREATE INDEX IF NOT EXISTS idx_watch_events_pending
 // the config file). name is the primary key, so upserting a watch replaces
 // its definition; kind selects which Target fields are meaningful; windows
 // and sinks are JSON arrays of strings; target is the JSON serialisation of
-// Target. last_check_at is added by migration step 3 (both on a fresh
-// install, which runs every step, and on an upgrade), and is the runtime
-// state of the interval gate (S6), written only by MarkWatchChecked — an
-// upsert of the definition never resets it. The definition layer
-// (internal/app) validates every field before SaveWatch sees it; the store
-// only enforces its storage invariants.
+// Target. last_check_at is added by migration step 3, and emit_initial by
+// step 4 (both on a fresh install, which runs every step, and on an
+// upgrade): last_check_at is the runtime state of the interval gate (S6),
+// written only by MarkWatchChecked, and emit_initial is the stored
+// --emit-initial opt-in. Neither is in this base schema, so the base and
+// the migration path stay one shape.
 const watchesTableSQL = `
 CREATE TABLE IF NOT EXISTS watches (
 	name          TEXT PRIMARY KEY,
@@ -259,6 +270,12 @@ type Watch struct {
 	Windows []string
 	// MinSeverity is the severity floor ("", "low", "medium" or "high").
 	MinSeverity string
+	// EmitInitial is the stored opt-in of --emit-initial (§5.5): a watch
+	// with it announces with incident.new what is already happening at its
+	// first check; without it the baseline stays silent (S3). The engine
+	// (internal/watch) owns the baseline rule; this flag only tells it
+	// which behaviour to use.
+	EmitInitial bool
 	// Sinks are the notification destinations, by config sink name.
 	Sinks []string
 	// IntervalSecs is the polling interval in seconds.
@@ -450,21 +467,30 @@ func (s *Store) SaveWatch(w Watch) error {
 		return fmt.Errorf("store: no se pudo serializar los destinos de la vigilancia %q: %w", w.Name, err)
 	}
 	if _, err := s.db.Exec(`INSERT INTO watches
-		(name, kind, target, windows, min_severity, sinks, interval_secs, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		(name, kind, target, windows, min_severity, emit_initial, sinks, interval_secs, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(name) DO UPDATE SET
 			kind = excluded.kind,
 			target = excluded.target,
 			windows = excluded.windows,
 			min_severity = excluded.min_severity,
+			emit_initial = excluded.emit_initial,
 			sinks = excluded.sinks,
 			interval_secs = excluded.interval_secs,
 			created_at = excluded.created_at`,
-		w.Name, w.Kind, string(target), string(windows), w.MinSeverity, string(sinks),
+		w.Name, w.Kind, string(target), string(windows), w.MinSeverity, boolToInt(w.EmitInitial), string(sinks),
 		w.IntervalSecs, storeTime(w.CreatedAt)); err != nil {
 		return fmt.Errorf("store: no se pudo guardar la vigilancia %q: %w", w.Name, err)
 	}
 	return nil
+}
+
+// boolToInt renders a Go bool as the 0/1 the emit_initial column stores.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // MarkWatchChecked records that the run cycle really checked the watch at
@@ -486,17 +512,18 @@ func (s *Store) MarkWatchChecked(name string, at time.Time) error {
 // Watch returns the stored definition of one watch. An absent name is a
 // not_found error (exit 4, ARRANQUE §6.3: "vigilancia inexistente").
 func (s *Store) Watch(name string) (Watch, error) {
-	row := s.db.QueryRow(`SELECT kind, target, windows, min_severity, sinks, interval_secs, created_at, last_check_at
+	row := s.db.QueryRow(`SELECT kind, target, windows, min_severity, emit_initial, sinks, interval_secs, created_at, last_check_at
 		FROM watches WHERE name = ?`, name)
 	var (
 		w           Watch
 		target      string
 		windows     string
 		sinks       string
+		emitInitial int
 		createdAt   string
 		lastCheckAt sql.NullString
 	)
-	err := row.Scan(&w.Kind, &target, &windows, &w.MinSeverity, &sinks, &w.IntervalSecs, &createdAt, &lastCheckAt)
+	err := row.Scan(&w.Kind, &target, &windows, &w.MinSeverity, &emitInitial, &sinks, &w.IntervalSecs, &createdAt, &lastCheckAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Watch{}, errs.NewNotFound(fmt.Sprintf("no existe la vigilancia %q", name))
@@ -506,6 +533,7 @@ func (s *Store) Watch(name string) (Watch, error) {
 	if err := decodeWatchFields(&w, target, windows, sinks, createdAt, lastCheckAt, name); err != nil {
 		return Watch{}, err
 	}
+	w.EmitInitial = emitInitial != 0
 	w.Name = name
 	return w, nil
 }
@@ -513,7 +541,7 @@ func (s *Store) Watch(name string) (Watch, error) {
 // Watches returns every stored watch definition, ordered by name, so the
 // listing is stable whatever order the rows come back in.
 func (s *Store) Watches() ([]Watch, error) {
-	rows, err := s.db.Query(`SELECT name, kind, target, windows, min_severity, sinks, interval_secs, created_at, last_check_at
+	rows, err := s.db.Query(`SELECT name, kind, target, windows, min_severity, emit_initial, sinks, interval_secs, created_at, last_check_at
 		FROM watches ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: no se pudo leer las vigilancias: %w", err)
@@ -528,15 +556,17 @@ func (s *Store) Watches() ([]Watch, error) {
 			target      string
 			windows     string
 			sinks       string
+			emitInitial int
 			createdAt   string
 			lastCheckAt sql.NullString
 		)
-		if err := rows.Scan(&name, &w.Kind, &target, &windows, &w.MinSeverity, &sinks, &w.IntervalSecs, &createdAt, &lastCheckAt); err != nil {
+		if err := rows.Scan(&name, &w.Kind, &target, &windows, &w.MinSeverity, &emitInitial, &sinks, &w.IntervalSecs, &createdAt, &lastCheckAt); err != nil {
 			return nil, fmt.Errorf("store: vigilancia ilegible: %w", err)
 		}
 		if err := decodeWatchFields(&w, target, windows, sinks, createdAt, lastCheckAt, name); err != nil {
 			return nil, err
 		}
+		w.EmitInitial = emitInitial != 0
 		w.Name = name
 		watches = append(watches, w)
 	}

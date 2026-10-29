@@ -464,9 +464,9 @@ func resolvableSinks(name string, st *store.Store, cfg *config.Config) ([]watch.
 
 // ValidateSinksUsable checks that every named sink can actually be built
 // from the config, not just that its name exists: a sink whose construction
-// fails (an unknown webhook template, a telegram template the config schema
-// cannot carry a chat id for) must fail at `watch add` time, not silently
-// drop every notification later. It is the construction half of
+// fails (an unknown webhook template, a telegram template without a
+// chat_id) must fail at `watch add` time, not silently drop every
+// notification later. It is the construction half of
 // validateSinks (which owns the name half); call it after ParseWatchSpec.
 func ValidateSinksUsable(sinks []string, cfg *config.Config) error {
 	for _, name := range sinks {
@@ -501,10 +501,14 @@ func sinkFromConfig(name string, s config.Sink) (watch.Sink, error) {
 		case watch.StyleDiscord, watch.StyleSlack:
 			return &watch.WebhookSink{URL: s.URL, Style: style}, nil
 		case watch.StyleTelegram:
-			// The config schema (docs/ARRANQUE.md §7) carries no chat id
-			// field, and the sink layer delivers per event; a telegram sink
-			// without a chat id can never succeed, so treat it as unusable.
-			return nil, fmt.Errorf("el destino %q es de tipo telegram y la configuración no tiene campo para su chat_id", name)
+			chatID := strings.TrimSpace(s.ChatID)
+			if chatID == "" {
+				// A telegram sink without a chat_id can never succeed: the
+				// delivery body has no destination to post to. Treat it as
+				// unusable, with a message naming the missing field.
+				return nil, fmt.Errorf("el destino %q es de tipo telegram y no tiene chat_id configurado: añade chat_id en [sinks.%s]", name, name)
+			}
+			return &watch.WebhookSink{URL: s.URL, Style: style, ChatID: chatID}, nil
 		default:
 			return nil, fmt.Errorf("el destino %q tiene una plantilla de webhook desconocida %q: usa discord o slack", name, s.Template)
 		}
@@ -607,7 +611,7 @@ func checkOnStore(st *store.Store, spec WatchSpec, matches []model.Incident, now
 	if err != nil {
 		return CheckReport{}, err
 	}
-	checkResult, err := watch.NewWatcher(st).Check(watch.Definition{Name: spec.Name, Windows: spec.Windows}, matches, now)
+	checkResult, err := watch.NewWatcher(st).Check(watch.Definition{Name: spec.Name, Windows: spec.Windows, EmitInitial: spec.EmitInitial}, matches, now)
 	if err != nil {
 		return CheckReport{}, err
 	}
