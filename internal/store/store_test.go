@@ -2,14 +2,18 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/aam9063/trafico-cli/internal/errs"
 )
 
 // stateFixture builds a deterministic IncidentState for tests.
@@ -863,6 +867,277 @@ func waitForFiles(t *testing.T, dir, prefix string, count int) {
 			t.Fatalf("timed out waiting for %d %s files in %s", count, prefix, dir)
 		}
 		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// v2SchemaSQL is the schema of store version 2: the version-1 base schema
+// plus the three describing columns the version-2 step added, exactly as
+// the previous binary left the database after migrating.
+const v2SchemaSQL = v1SchemaSQL + `
+ALTER TABLE watch_state ADD COLUMN road TEXT NOT NULL DEFAULT '';
+ALTER TABLE watch_state ADD COLUMN pk TEXT NOT NULL DEFAULT '';
+ALTER TABLE watch_state ADD COLUMN type TEXT NOT NULL DEFAULT '';
+`
+
+// ptr returns a pointer to v, a helper for the nullable PK bounds.
+func ptr(v float64) *float64 { return &v }
+
+// sameWatch compares two Watch values field by field: the struct carries
+// slices, so it is not comparable with ==.
+func sameWatch(a, b Watch) bool { return reflect.DeepEqual(a, b) }
+
+// watchFixture builds a deterministic Watch for tests.
+func watchFixture(name, kind string) Watch {
+	created := time.Date(2026, 10, 29, 8, 30, 0, 0, time.UTC)
+	return Watch{
+		Name:         name,
+		Kind:         kind,
+		Windows:      []string{"lun-vie 07:00-09:00", "lun-vie 17:30-19:30"},
+		MinSeverity:  "medium",
+		Sinks:        []string{"phone"},
+		IntervalSecs: 300,
+		CreatedAt:    created,
+	}
+}
+
+// TestWatchRoundTripAllKinds covers the three target shapes: every column
+// of the watches table survives a save/read cycle unchanged, including the
+// nullable PK bounds of the road kind and both centre variants of the near
+// kind (a saved place name and raw coordinates).
+func TestWatchRoundTripAllKinds(t *testing.T) {
+	s := openTestStore(t)
+	defer s.Close()
+
+	zero := 0.0
+	want := []Watch{
+		func() Watch {
+			w := watchFixture("ruta", WatchKindRoute)
+			w.Target = Target{Route: "trabajo"}
+			return w
+		}(),
+		func() Watch {
+			w := watchFixture("carretera", WatchKindRoad)
+			w.Target = Target{Road: "AP-7", PKFrom: ptr(600.5), PKTo: ptr(700.0)}
+			return w
+		}(),
+		func() Watch {
+			w := watchFixture("carretera-abierta", WatchKindRoad)
+			w.Target = Target{Road: "A-7", PKFrom: ptr(102.3)}
+			return w
+		}(),
+		func() Watch {
+			w := watchFixture("lugar", WatchKindNear)
+			w.Target = Target{Place: "casa", RadiusKm: 15}
+			return w
+		}(),
+		func() Watch {
+			w := watchFixture("coordenadas", WatchKindNear)
+			w.Target = Target{Lat: ptr(38.3452), Lon: &zero, RadiusKm: 10}
+			return w
+		}(),
+	}
+	for _, w := range want {
+		if err := s.SaveWatch(w); err != nil {
+			t.Fatalf("SaveWatch(%s): %v", w.Name, err)
+		}
+	}
+
+	for _, wantWatch := range want {
+		got, err := s.Watch(wantWatch.Name)
+		if err != nil {
+			t.Fatalf("Watch(%s): %v", wantWatch.Name, err)
+		}
+		if !sameWatch(got, wantWatch) {
+			t.Errorf("Watch(%s) = %+v, want %+v", wantWatch.Name, got, wantWatch)
+		}
+	}
+}
+
+// TestSaveWatchUpsertReplaces checks that saving an existing name replaces
+// every column instead of failing on the primary key.
+func TestSaveWatchUpsertReplaces(t *testing.T) {
+	s := openTestStore(t)
+	defer s.Close()
+
+	first := watchFixture("trabajo", WatchKindRoute)
+	first.Target = Target{Route: "casa"}
+	if err := s.SaveWatch(first); err != nil {
+		t.Fatalf("first SaveWatch: %v", err)
+	}
+
+	second := watchFixture("trabajo", WatchKindRoad)
+	second.Target = Target{Road: "AP-7"}
+	second.MinSeverity = ""
+	second.Sinks = []string{"casa", "oficina"}
+	second.IntervalSecs = 600
+	if err := s.SaveWatch(second); err != nil {
+		t.Fatalf("second SaveWatch: %v", err)
+	}
+
+	got, err := s.Watch("trabajo")
+	if err != nil {
+		t.Fatalf("Watch after upsert: %v", err)
+	}
+	if !sameWatch(got, second) {
+		t.Errorf("Watch after upsert = %+v, want the replaced %+v", got, second)
+	}
+	all, err := s.Watches()
+	if err != nil {
+		t.Fatalf("Watches after upsert: %v", err)
+	}
+	if len(all) != 1 {
+		t.Errorf("Watches after upsert has %d rows, want 1", len(all))
+	}
+}
+
+// TestWatchesOrderedByName checks the name ordering of the full listing.
+func TestWatchesOrderedByName(t *testing.T) {
+	s := openTestStore(t)
+	defer s.Close()
+
+	for _, name := range []string{"casa", "ap7", "trabajo"} {
+		w := watchFixture(name, WatchKindRoute)
+		w.Target = Target{Route: name}
+		if err := s.SaveWatch(w); err != nil {
+			t.Fatalf("SaveWatch(%s): %v", name, err)
+		}
+	}
+
+	all, err := s.Watches()
+	if err != nil {
+		t.Fatalf("Watches: %v", err)
+	}
+	want := []string{"ap7", "casa", "trabajo"}
+	if len(all) != len(want) {
+		t.Fatalf("Watches returned %d rows, want %d", len(all), len(want))
+	}
+	for i, name := range want {
+		if all[i].Name != name {
+			t.Errorf("Watches[%d] = %q, want %q", i, all[i].Name, name)
+		}
+	}
+}
+
+// TestWatchUnknownIsNotFound pins the not_found error (exit 4) of §6.3 for
+// a watch name that was never saved.
+func TestWatchUnknownIsNotFound(t *testing.T) {
+	s := openTestStore(t)
+	defer s.Close()
+
+	_, err := s.Watch("inexistente")
+	if err == nil {
+		t.Fatal("Watch on an unknown name succeeded, want not_found")
+	}
+	var errsErr *errs.Error
+	if !errors.As(err, &errsErr) || errsErr.Type != "not_found" {
+		t.Fatalf("Watch error = %v, want a not_found errs.Error", err)
+	}
+}
+
+// TestDeleteWatchRemovesAndReportsNotFound covers the delete path: an
+// existing watch disappears, and deleting an absent name (never saved or
+// already deleted) is a not_found error, not a silent success.
+func TestDeleteWatchRemovesAndReportsNotFound(t *testing.T) {
+	s := openTestStore(t)
+	defer s.Close()
+
+	w := watchFixture("trabajo", WatchKindRoute)
+	w.Target = Target{Route: "casa"}
+	if err := s.SaveWatch(w); err != nil {
+		t.Fatalf("SaveWatch: %v", err)
+	}
+	if err := s.DeleteWatch("trabajo"); err != nil {
+		t.Fatalf("DeleteWatch: %v", err)
+	}
+	if _, err := s.Watch("trabajo"); err == nil {
+		t.Error("Watch after delete succeeded, want not_found")
+	}
+	if err := s.DeleteWatch("trabajo"); err == nil {
+		t.Error("DeleteWatch of a deleted name succeeded, want not_found")
+	}
+	if err := s.DeleteWatch("nunca-guardada"); err == nil {
+		t.Error("DeleteWatch of an unknown name succeeded, want not_found")
+	}
+}
+
+// TestOpenMigratesV2Database hand-crafts a database exactly as the
+// schema-2 binary wrote it (watch_state with the road/pk/type columns, no
+// watches table, user_version = 2) and checks that Open migrates it in
+// place: the version is bumped to 3, the pre-existing state and events
+// survive untouched, and the new watches table accepts writes.
+func TestOpenMigratesV2Database(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trafico.db")
+
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if _, err := db.Exec(v2SchemaSQL); err != nil {
+		t.Fatalf("create v2 schema: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 2"); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO watch_state
+		(watch_name, incident_id, severity, lanes, road, pk, type, end_time, last_seen_at, missing_count)
+		VALUES ('trabajo', 'dgt:SIT-old', 'high', '1 de 3', 'A-7', '102.3-108', 'roadworks', NULL,
+			'2026-10-28T09:00:00.000000000Z', 1)`); err != nil {
+		t.Fatalf("seed v2 state row: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO watch_events
+		(watch_name, incident_id, kind, payload, created_at, delivered_at)
+		VALUES ('trabajo', 'dgt:SIT-old', 'incident.new', '{"id":"dgt:SIT-old"}',
+			'2026-10-28T09:00:00.000000000Z', NULL)`); err != nil {
+		t.Fatalf("seed v2 event row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v2 database: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open on a v2 database: %v", err)
+	}
+	defer s.Close()
+
+	if got := queryUserVersion(t, s); got != schemaVersion {
+		t.Errorf("user_version after migration = %d, want %d", got, schemaVersion)
+	}
+
+	// The pre-existing state survives the migration untouched.
+	states, err := s.PreviousState("trabajo")
+	if err != nil {
+		t.Fatalf("PreviousState after migration: %v", err)
+	}
+	state, ok := states["dgt:SIT-old"]
+	if !ok {
+		t.Fatalf("pre-existing state lost in the migration: %+v", states)
+	}
+	if state.Severity != "high" || state.Road != "A-7" || state.PK != "102.3-108" || state.Type != "roadworks" || state.MissingCount != 1 {
+		t.Errorf("migrated state changed: %+v", state)
+	}
+
+	// The pre-existing pending event survives too.
+	events, err := s.UndeliveredEvents(10)
+	if err != nil {
+		t.Fatalf("UndeliveredEvents after migration: %v", err)
+	}
+	if len(events) != 1 || events[0].IncidentID != "dgt:SIT-old" {
+		t.Errorf("events after migration = %+v, want the pre-existing one", events)
+	}
+
+	// The new watches table accepts writes and reads after the migration.
+	w := watchFixture("nueva", WatchKindRoute)
+	w.Target = Target{Route: "casa"}
+	if err := s.SaveWatch(w); err != nil {
+		t.Fatalf("SaveWatch after migration: %v", err)
+	}
+	got, err := s.Watch("nueva")
+	if err != nil {
+		t.Fatalf("Watch after migration: %v", err)
+	}
+	if !sameWatch(got, w) {
+		t.Errorf("Watch after migration = %+v, want %+v", got, w)
 	}
 }
 
