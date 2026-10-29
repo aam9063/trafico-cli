@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	// Pure-Go SQLite driver: no CGO (ARRANQUE §8.1, CGO_ENABLED=0 must build).
@@ -20,7 +21,32 @@ import (
 // PRAGMA user_version. Bump it and add a migration step in applyMigrations
 // whenever the schema changes; a database written by a NEWER binary must be
 // refused rather than silently misread.
-const schemaVersion = 1
+const schemaVersion = 2
+
+// migrationSteps, indexed by the version they migrate FROM, bring a database
+// one version forward. Step 0 creates the base (version-1) schema; every
+// later step is an ALTER-style migration. A database written by a NEWER
+// binary is refused before any step runs.
+var migrationSteps = map[int]func(*sql.Tx) error{
+	0: func(tx *sql.Tx) error {
+		if _, err := tx.Exec(schemaSQL); err != nil {
+			return fmt.Errorf("no se pudo aplicar el esquema: %w", err)
+		}
+		return nil
+	},
+	// Version 1 → 2: the describing fields of an incident (road, kilometre
+	// point, type) join the state, so an incident.cleared notification can
+	// say what ended. Existing rows keep empty strings, exactly what the old
+	// binary knew about them.
+	1: func(tx *sql.Tx) error {
+		for _, column := range []string{"road", "pk", "type"} {
+			if _, err := tx.Exec("ALTER TABLE watch_state ADD COLUMN " + column + " TEXT NOT NULL DEFAULT ''"); err != nil {
+				return fmt.Errorf("no se pudo añadir la columna %s: %w", column, err)
+			}
+		}
+		return nil
+	},
+}
 
 // Event kinds of the append-only watch event log (docs/ARRANQUE.md §5.5).
 const (
@@ -40,6 +66,17 @@ type IncidentState struct {
 	// Lanes is a stable serialisation of the lane list; empty when the
 	// feed carries none.
 	Lanes string
+	// Road is the road the incident affects ("A-7"), remembered so an
+	// incident.cleared notification can still say what ended.
+	Road string
+	// PK is the kilometre-point interval as one stored string that
+	// round-trips the model's {from,to} shape: "102.3-108" with both
+	// bounds, the open end alone with one, and empty when the incident
+	// has no PK (P-04). One column, one representation.
+	PK string
+	// Type is the normalised incident type ("roadworks", "accident",
+	// ...), remembered for the same reason as Road.
+	Type string
 	// EndTime is the announced end of the incident; nil when the feed
 	// carries none (P-04: absent, not invented).
 	EndTime *time.Time
@@ -67,8 +104,9 @@ type Event struct {
 	Payload string
 	// CreatedAt is when the watcher detected the change.
 	CreatedAt time.Time
-	// DeliveredAt is when a sink accepted the notification; nil while it
-	// is still pending.
+	// DeliveredAt is when a sink accepted the notification (or, for an
+	// event that can never be delivered, when it was stamped out of the
+	// retry queue by MarkSkipped); nil while it is still pending.
 	DeliveredAt *time.Time
 }
 
@@ -80,9 +118,10 @@ type Store struct {
 	db *sql.DB
 }
 
-// schemaSQL is the schema of version 1, written once so the migration path
-// stays obvious: applyMigrations applies it when user_version is 0 and then
-// records schemaVersion. Every later version adds its own numbered step.
+// schemaSQL is the base (version-1) schema, written once so the migration
+// path stays obvious: applyMigrations applies it when user_version is 0 and
+// then runs every numbered step up to schemaVersion. Every later version
+// adds its own step in migrationSteps.
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS watch_state (
 	watch_name    TEXT    NOT NULL,
@@ -158,10 +197,39 @@ func (s *Store) Close() error {
 }
 
 // applyMigrations brings the database up to schemaVersion. Version 0 means
-// an empty database: apply the version-1 schema. A version greater than the
-// compiled-in one means an older binary is reading a newer database, which
-// must not be silently misread.
+// an empty database: apply the base schema and then every step. A version
+// greater than the compiled-in one means an older binary is reading a newer
+// database, which must not be silently misread. All steps and the version
+// bump run inside one transaction, so a database is never left half-migrated.
+//
+// Two processes can open the same old database at once. Each attempt
+// re-reads the version — outside the transaction to refuse a newer database,
+// inside it to skip steps another process already applied — and a short
+// bounded retry absorbs the window where the other process still holds the
+// write lock, so the loser skips instead of failing.
 func (s *Store) applyMigrations() error {
+	for attempt := 0; ; attempt++ {
+		err := s.migrateOnce()
+		if err == nil {
+			return nil
+		}
+		if attempt >= migrationRetries || !isBusyError(err) {
+			return err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// migrationRetries is how many times a migration attempt that lost the write
+// lock to another process is repeated. Each attempt re-reads the schema
+// version, so once the other process commits, the next attempt skips instead
+// of failing; the budget is generous next to a five-second busy timeout.
+const migrationRetries = 10
+
+// migrateOnce performs one migration attempt: refuse a newer database, skip
+// when it is already current, and otherwise run every step up to
+// schemaVersion inside one transaction together with the version bump.
+func (s *Store) migrateOnce() error {
 	var version int
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fmt.Errorf("store: no se pudo leer la versión del esquema: %w", err)
@@ -177,8 +245,33 @@ func (s *Store) applyMigrations() error {
 		return fmt.Errorf("store: no se pudo iniciar la migración: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(schemaSQL); err != nil {
-		return fmt.Errorf("store: no se pudo aplicar el esquema: %w", err)
+	// Re-read the version INSIDE the transaction: two processes opening the
+	// same old database can both read the old version outside, and the
+	// loser would otherwise apply its step twice and fail with a
+	// duplicate-column error. This is the first read of the deferred
+	// transaction, so it sees whatever another process already committed.
+	// If the other process still holds the write lock, the ALTER below may
+	// fail with SQLITE_BUSY — the caller retries the whole attempt and then
+	// lands on this skip.
+	var current int
+	if err := tx.QueryRow("PRAGMA user_version").Scan(&current); err != nil {
+		return fmt.Errorf("store: no se pudo leer la versión del esquema: %w", err)
+	}
+	if current > schemaVersion {
+		return fmt.Errorf("store: la base de datos usa el esquema %d, más nuevo que el soportado (%d)", current, schemaVersion)
+	}
+	if current == schemaVersion {
+		// Another process migrated while we were opening: nothing to do.
+		return nil
+	}
+	for v := current; v < schemaVersion; v++ {
+		step, ok := migrationSteps[v]
+		if !ok {
+			return fmt.Errorf("store: no hay migración del esquema %d al %d", v, v+1)
+		}
+		if err := step(tx); err != nil {
+			return fmt.Errorf("store: migración del esquema %d al %d falló: %w", v, v+1, err)
+		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return fmt.Errorf("store: no se pudo registrar la versión del esquema: %w", err)
@@ -186,10 +279,24 @@ func (s *Store) applyMigrations() error {
 	return tx.Commit()
 }
 
+// isBusyError reports whether the error is SQLite refusing a read or write
+// because another connection holds the database (SQLITE_BUSY or
+// SQLITE_LOCKED): the expected outcome when two processes race to migrate
+// the same database, and the one case a migration attempt is retried.
+func isBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "SQLITE_BUSY") ||
+		strings.Contains(msg, "SQLITE_LOCKED") ||
+		strings.Contains(msg, "database is locked")
+}
+
 // PreviousState returns the stored snapshot of one watch: one entry per
 // incident still tracked. A watch with no history yields an empty map.
 func (s *Store) PreviousState(watch string) (map[string]IncidentState, error) {
-	rows, err := s.db.Query(`SELECT incident_id, severity, lanes, end_time, last_seen_at, missing_count
+	rows, err := s.db.Query(`SELECT incident_id, severity, lanes, road, pk, type, end_time, last_seen_at, missing_count
 		FROM watch_state WHERE watch_name = ?`, watch)
 	if err != nil {
 		return nil, fmt.Errorf("store: no se pudo leer el estado de la vigilancia %q: %w", watch, err)
@@ -204,7 +311,8 @@ func (s *Store) PreviousState(watch string) (map[string]IncidentState, error) {
 			endTime    sql.NullString
 			lastSeenAt string
 		)
-		if err := rows.Scan(&id, &state.Severity, &state.Lanes, &endTime, &lastSeenAt, &state.MissingCount); err != nil {
+		if err := rows.Scan(&id, &state.Severity, &state.Lanes, &state.Road, &state.PK, &state.Type,
+			&endTime, &lastSeenAt, &state.MissingCount); err != nil {
 			return nil, fmt.Errorf("store: fila de estado ilegible en %q: %w", watch, err)
 		}
 		lastSeen, err := parseStoredTime(lastSeenAt)
@@ -242,8 +350,8 @@ func (s *Store) ReplaceState(watch string, states map[string]IncidentState) erro
 		return fmt.Errorf("store: no se pudo vaciar el estado de la vigilancia %q: %w", watch, err)
 	}
 	insert, err := tx.Prepare(`INSERT INTO watch_state
-		(watch_name, incident_id, severity, lanes, end_time, last_seen_at, missing_count)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`)
+		(watch_name, incident_id, severity, lanes, road, pk, type, end_time, last_seen_at, missing_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("store: no se pudo preparar el reemplazo de estado: %w", err)
 	}
@@ -254,8 +362,8 @@ func (s *Store) ReplaceState(watch string, states map[string]IncidentState) erro
 		if state.EndTime != nil {
 			endTime = storeTime(*state.EndTime)
 		}
-		if _, err := insert.Exec(watch, id, state.Severity, state.Lanes, endTime,
-			storeTime(state.LastSeenAt), state.MissingCount); err != nil {
+		if _, err := insert.Exec(watch, id, state.Severity, state.Lanes, state.Road, state.PK, state.Type,
+			endTime, storeTime(state.LastSeenAt), state.MissingCount); err != nil {
 			return fmt.Errorf("store: no se pudo guardar el estado de %q en la vigilancia %q: %w", id, watch, err)
 		}
 	}
@@ -351,6 +459,24 @@ func (s *Store) UndeliveredEvents(limit int) ([]Event, error) {
 // MarkDelivered stamps the given event ids as delivered now, keeping the
 // rows: the log is append-only and pruning is PruneEvents' job.
 func (s *Store) MarkDelivered(ids []int64) error {
+	return s.stampEvents(ids)
+}
+
+// MarkSkipped stamps the given event ids so they stop blocking the retry
+// queue. It is for undeliverable DATA — a payload that can never render, so
+// every retry would fail and stall the events behind it forever — never for
+// outages: a delivery that may succeed later must stay pending (use
+// MarkDelivered only after a sink accepted the notification). The stamp is
+// the same delivered_at column UndeliveredEvents filters on, so a skipped
+// event never comes back as pending; its row stays in the log (the log is
+// append-only, pruning is PruneEvents' job) for diagnostics.
+func (s *Store) MarkSkipped(ids []int64) error {
+	return s.stampEvents(ids)
+}
+
+// stampEvents sets delivered_at on the given event ids, the one store
+// operation shared by MarkDelivered and MarkSkipped.
+func (s *Store) stampEvents(ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}

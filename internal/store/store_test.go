@@ -2,7 +2,9 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -20,6 +22,36 @@ func stateFixture(severity string, end *time.Time, missing int) IncidentState {
 		MissingCount: missing,
 	}
 }
+
+// v1SchemaSQL is the schema of store version 1, kept verbatim so the
+// migration test can hand-craft a database exactly as the previous binary
+// wrote it.
+const v1SchemaSQL = `
+CREATE TABLE IF NOT EXISTS watch_state (
+	watch_name    TEXT    NOT NULL,
+	incident_id   TEXT    NOT NULL,
+	severity      TEXT    NOT NULL DEFAULT '',
+	lanes         TEXT    NOT NULL DEFAULT '',
+	end_time      TEXT,
+	last_seen_at  TEXT    NOT NULL,
+	missing_count INTEGER NOT NULL DEFAULT 0 CHECK (missing_count >= 0),
+	PRIMARY KEY (watch_name, incident_id)
+);
+
+CREATE TABLE IF NOT EXISTS watch_events (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	watch_name   TEXT NOT NULL,
+	incident_id  TEXT NOT NULL,
+	kind         TEXT NOT NULL,
+	payload      TEXT NOT NULL,
+	created_at   TEXT NOT NULL,
+	delivered_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_watch_events_pending
+	ON watch_events (created_at)
+	WHERE delivered_at IS NULL;
+`
 
 // TestOpenCreatesFileAndDirWithPrivatePermissions checks ARRANQUE §7: the
 // database file is created 0600 and its directory 0700, because the database
@@ -128,11 +160,20 @@ func TestPreviousStateRoundTrip(t *testing.T) {
 
 	end := time.Date(2026, 10, 28, 14, 30, 0, 0, time.UTC)
 	want := map[string]IncidentState{
-		"SIT-open":  stateFixture("medium", nil, 1),
+		"SIT-open": func() IncidentState {
+			s := stateFixture("medium", nil, 1)
+			s.Road = "A-7"
+			s.PK = "102.3-108"
+			s.Type = "roadworks"
+			return s
+		}(),
 		"SIT-ended": stateFixture("high", &end, 0),
 		"SIT-cleared": {
 			Severity:     "low",
 			Lanes:        "",
+			Road:         "N-340",
+			PK:           "102.3",
+			Type:         "accident",
 			EndTime:      nil,
 			LastSeenAt:   time.Date(2026, 10, 27, 8, 15, 30, 123456789, time.UTC),
 			MissingCount: 2,
@@ -160,6 +201,15 @@ func TestPreviousStateRoundTrip(t *testing.T) {
 		}
 		if gotState.Lanes != wantState.Lanes {
 			t.Errorf("%s lanes = %q, want %q", id, gotState.Lanes, wantState.Lanes)
+		}
+		if gotState.Road != wantState.Road {
+			t.Errorf("%s road = %q, want %q", id, gotState.Road, wantState.Road)
+		}
+		if gotState.PK != wantState.PK {
+			t.Errorf("%s pk = %q, want %q", id, gotState.PK, wantState.PK)
+		}
+		if gotState.Type != wantState.Type {
+			t.Errorf("%s type = %q, want %q", id, gotState.Type, wantState.Type)
 		}
 		if !sameNullableTime(gotState.EndTime, wantState.EndTime) {
 			t.Errorf("%s end_time = %v, want %v", id, gotState.EndTime, wantState.EndTime)
@@ -515,6 +565,88 @@ func TestUndeliveredEventsOrdersChronologically(t *testing.T) {
 	}
 }
 
+// TestOpenMigratesV1Database hand-crafts a database exactly as the schema-1
+// binary wrote it (no road/pk/type columns, user_version = 1) and checks that
+// Open migrates it in place: the version is bumped, the pre-existing row
+// survives with empty description fields, and a subsequent ReplaceState +
+// PreviousState round-trips the new fields.
+func TestOpenMigratesV1Database(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trafico.db")
+
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if _, err := db.Exec(v1SchemaSQL); err != nil {
+		t.Fatalf("create v1 schema: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 1"); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO watch_state
+		(watch_name, incident_id, severity, lanes, end_time, last_seen_at, missing_count)
+		VALUES ('trabajo', 'dgt:SIT-old', 'high', '1 de 3', NULL,
+			'2026-10-28T09:00:00.000000000Z', 1)`); err != nil {
+		t.Fatalf("seed v1 row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v1 database: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open on a v1 database: %v", err)
+	}
+	defer s.Close()
+
+	if got := queryUserVersion(t, s); got != schemaVersion {
+		t.Errorf("user_version after migration = %d, want %d", got, schemaVersion)
+	}
+
+	// The pre-existing row survives the migration, its old fields intact and
+	// its new description fields empty (the old binary could not know them).
+	prev, err := s.PreviousState("trabajo")
+	if err != nil {
+		t.Fatalf("PreviousState after migration: %v", err)
+	}
+	old, ok := prev["dgt:SIT-old"]
+	if !ok {
+		t.Fatalf("pre-existing row lost in the migration: %+v", prev)
+	}
+	if old.Severity != "high" || old.Lanes != "1 de 3" || old.MissingCount != 1 {
+		t.Errorf("migrated row changed: %+v", old)
+	}
+	if old.Road != "" || old.PK != "" || old.Type != "" {
+		t.Errorf("migrated row invented description fields: %+v", old)
+	}
+
+	// New writes round-trip the description fields through the migrated
+	// schema.
+	lastSeen := time.Date(2026, 10, 28, 10, 0, 0, 0, time.UTC)
+	want := IncidentState{
+		Severity:   "medium",
+		Lanes:      "lane1",
+		Road:       "A-7",
+		PK:         "102.3-108",
+		Type:       "roadworks",
+		LastSeenAt: lastSeen,
+	}
+	if err := s.ReplaceState("trabajo", map[string]IncidentState{"dgt:SIT-new": want}); err != nil {
+		t.Fatalf("ReplaceState after migration: %v", err)
+	}
+	prev, err = s.PreviousState("trabajo")
+	if err != nil {
+		t.Fatalf("PreviousState of the new row: %v", err)
+	}
+	got, ok := prev["dgt:SIT-new"]
+	if !ok {
+		t.Fatalf("new row missing after replace: %+v", prev)
+	}
+	if got != want {
+		t.Errorf("round trip = %+v, want %+v", got, want)
+	}
+}
+
 // TestOpenRefusesNewerSchema checks that a database written by a newer
 // schema version is refused instead of silently misread.
 func TestOpenRefusesNewerSchema(t *testing.T) {
@@ -587,6 +719,150 @@ func TestMarkDeliveredUnknownIDFails(t *testing.T) {
 
 	if err := s.MarkDelivered([]int64{4242}); err == nil {
 		t.Fatal("MarkDelivered with an unknown id succeeded, want an error")
+	}
+}
+
+// TestConcurrentMigrationsDoNotCollide covers the migration guard: several
+// processes opening the same old database at the same time must not make the
+// losers fail with a duplicate-column error. The version must be re-checked
+// inside the migration transaction, so a process that already applied the
+// step makes the others skip it. The children re-execute this test binary
+// with TRAFICO_MIGRATION_RACE_CHILD=1; a start barrier releases them all at
+// once so they read the old schema version together.
+func TestConcurrentMigrationsDoNotCollide(t *testing.T) {
+	if os.Getenv("TRAFICO_MIGRATION_RACE_CHILD") != "" {
+		runMigrationRaceChild()
+		return
+	}
+	path := filepath.Join(t.TempDir(), "trafico.db")
+
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if _, err := db.Exec(v1SchemaSQL); err != nil {
+		t.Fatalf("create v1 schema: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 1"); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v1 database: %v", err)
+	}
+
+	dir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+
+	const children = 4
+	cmds := make([]*exec.Cmd, children)
+	for i := range cmds {
+		ready := filepath.Join(dir, fmt.Sprintf("ready-%d", i))
+		result := filepath.Join(dir, fmt.Sprintf("result-%d", i))
+		cmds[i] = exec.Command(executable, "-test.run", "^"+t.Name()+"$")
+		cmds[i].Env = append(os.Environ(),
+			"TRAFICO_MIGRATION_RACE_CHILD=1",
+			"TRAFICO_MIGRATION_RACE_DB="+path,
+			"TRAFICO_MIGRATION_RACE_READY="+ready,
+			"TRAFICO_MIGRATION_RACE_RESULT="+result,
+		)
+		if err := cmds[i].Start(); err != nil {
+			t.Fatalf("start child %d: %v", i, err)
+		}
+	}
+	// Barrier: every child signals ready, then the parent opens the gate so
+	// all of them read the old schema version at the same time.
+	waitForFiles(t, dir, "ready-", children)
+	if err := os.WriteFile(filepath.Join(dir, "start"), nil, 0o600); err != nil {
+		t.Fatalf("write start barrier: %v", err)
+	}
+	for i, cmd := range cmds {
+		if err := cmd.Wait(); err != nil {
+			t.Errorf("child %d: %v", i, err)
+		}
+	}
+
+	// No child may have failed to open the database.
+	for i := range cmds {
+		out, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("result-%d", i)))
+		if err != nil {
+			t.Fatalf("child %d wrote no result: %v", i, err)
+		}
+		if strings.HasPrefix(string(out), "error") {
+			t.Errorf("child %d failed to open the shared database: %s", i, out)
+		}
+	}
+
+	// The database must come out intact at the current schema version.
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open after the race: %v", err)
+	}
+	defer s.Close()
+	if got := queryUserVersion(t, s); got != schemaVersion {
+		t.Errorf("user_version after the race = %d, want %d", got, schemaVersion)
+	}
+}
+
+// runMigrationRaceChild is the body of TestConcurrentMigrationsDoNotCollide
+// in a child process: signal ready, wait for the start barrier, open the
+// shared database like a second process, and report the outcome through the
+// result file the parent reads.
+func runMigrationRaceChild() {
+	ready := os.Getenv("TRAFICO_MIGRATION_RACE_READY")
+	result := os.Getenv("TRAFICO_MIGRATION_RACE_RESULT")
+	dbPath := os.Getenv("TRAFICO_MIGRATION_RACE_DB")
+	fail := func(err error) {
+		os.WriteFile(result, []byte("error: "+err.Error()), 0o600)
+	}
+	if err := os.WriteFile(ready, nil, 0o600); err != nil {
+		fail(err)
+		return
+	}
+	start := filepath.Join(filepath.Dir(ready), "start")
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		if _, err := os.Stat(start); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			fail(fmt.Errorf("start barrier timed out"))
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	s, err := Open(dbPath)
+	if err != nil {
+		fail(err)
+		return
+	}
+	if err := s.Close(); err != nil {
+		fail(err)
+		return
+	}
+	os.WriteFile(result, []byte("ok"), 0o600)
+}
+
+// waitForFiles waits until count files named prefix<i> exist in dir.
+func waitForFiles(t *testing.T, dir, prefix string, count int) {
+	t.Helper()
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		ready := 0
+		for i := 0; i < count; i++ {
+			if _, err := os.Stat(filepath.Join(dir, fmt.Sprintf("%s%d", prefix, i))); err == nil {
+				ready++
+			}
+		}
+		if ready == count {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d %s files in %s", count, prefix, dir)
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
 }
 
