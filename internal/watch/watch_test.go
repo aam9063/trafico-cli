@@ -526,6 +526,49 @@ func TestCheckSkipsIncidentWithBaselineSentinelID(t *testing.T) {
 	}
 }
 
+// TestCheckDeduplicatesRepeatedIncidentIDInOneCheck pins the engine-level
+// dedupe invariant: a route watch maps one incident to one criteria per
+// segment, so a caller (route check precision, internal/app) may hand the
+// same incident to one Check more than once when its PK range overlaps
+// several segments. The incident id is the identity: within one Check an id
+// produces at most one event of each kind, so a watch never notifies twice
+// for the same thing.
+func TestCheckDeduplicatesRepeatedIncidentIDInOneCheck(t *testing.T) {
+	st := openTestStore(t)
+	def := Definition{Name: "trabajo"}
+	w := NewWatcher(st)
+	runBaseline(t, st, def, []model.Incident{incidentFixture("SIT-1", "medium")})
+
+	// New: the same unseen incident handed twice is one incident.new.
+	duplicate := incidentFixture("SIT-2", "high")
+	result, err := w.Check(def, []model.Incident{duplicate, duplicate}, checkNow.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("got %d events for one incident handed twice, want exactly 1: %+v", len(result.Events), result.Events)
+	}
+	if result.Events[0].Kind != store.EventIncidentNew || result.Events[0].IncidentID != "dgt:SIT-2" {
+		t.Fatalf("event = %+v, want one incident.new for dgt:SIT-2", result.Events[0])
+	}
+
+	// Updated: the same changed incident handed twice is one incident.updated
+	// (SIT-1 stays present so no incident.cleared fires in this check).
+	kept := incidentFixture("SIT-1", "medium")
+	changed := incidentFixture("SIT-2", "high")
+	changed.LanesAffected = []string{"lane1", "lane2"}
+	result, err = w.Check(def, []model.Incident{kept, changed, changed}, checkNow.Add(10*time.Minute))
+	if err != nil {
+		t.Fatalf("second Check: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("got %d events for one changed incident handed twice, want exactly 1: %+v", len(result.Events), result.Events)
+	}
+	if result.Events[0].Kind != store.EventIncidentUpdated || result.Events[0].IncidentID != "dgt:SIT-2" {
+		t.Fatalf("event = %+v, want one incident.updated for dgt:SIT-2", result.Events[0])
+	}
+}
+
 // TestValidateIntervalRejectsBelowTwoMinutes covers S6: an interval below two
 // minutes is a usage error (exit 2).
 func TestValidateIntervalRejectsBelowTwoMinutes(t *testing.T) {

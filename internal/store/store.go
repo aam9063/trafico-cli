@@ -6,12 +6,16 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/aam9063/trafico-cli/internal/errs"
 
 	// Pure-Go SQLite driver: no CGO (ARRANQUE §8.1, CGO_ENABLED=0 must build).
 	_ "modernc.org/sqlite"
@@ -21,7 +25,7 @@ import (
 // PRAGMA user_version. Bump it and add a migration step in applyMigrations
 // whenever the schema changes; a database written by a NEWER binary must be
 // refused rather than silently misread.
-const schemaVersion = 2
+const schemaVersion = 3
 
 // migrationSteps, indexed by the version they migrate FROM, bring a database
 // one version forward. Step 0 creates the base (version-1) schema; every
@@ -46,13 +50,32 @@ var migrationSteps = map[int]func(*sql.Tx) error{
 		}
 		return nil
 	},
+	// Version 2 → 3: the watches table. Watch definitions move out of the
+	// config file into the database (docs/ARRANQUE.md §7), so `watch add`
+	// works without rewriting the 0600 config and `watch run` reads the
+	// definitions through the same store as the state and the events. The
+	// table starts empty: versions 1-2 carried no watch definitions, so
+	// there is nothing to carry over.
+	2: func(tx *sql.Tx) error {
+		if _, err := tx.Exec(watchesTableSQL); err != nil {
+			return fmt.Errorf("no se pudo crear la tabla watches: %w", err)
+		}
+		return nil
+	},
 }
 
-// Event kinds of the append-only watch event log (docs/ARRANQUE.md §5.5).
+// Event kinds of the append-only watch event log and target kinds of the
+// watches table (docs/ARRANQUE.md §5.5 and §7).
 const (
 	EventIncidentNew     = "incident.new"
 	EventIncidentUpdated = "incident.updated"
 	EventIncidentCleared = "incident.cleared"
+
+	// Watch kinds, the target shapes a watch can take. The kind column
+	// selects which Target fields are meaningful.
+	WatchKindRoute = "route" // a saved route by name
+	WatchKindRoad  = "road"  // one road with an optional PK range
+	WatchKindNear  = "near"  // a radius around a place or coordinates
 )
 
 // IncidentState is what the watch layer remembers about one incident of a
@@ -148,6 +171,86 @@ CREATE INDEX IF NOT EXISTS idx_watch_events_pending
 	ON watch_events (created_at)
 	WHERE delivered_at IS NULL;
 `
+
+// watchesTableSQL is the version-3 addition: the watch definitions, one row
+// per watch (docs/ARRANQUE.md §7: the database holds the vigilancias, not
+// the config file). name is the primary key, so upserting a watch replaces
+// its definition; kind selects which Target fields are meaningful; windows
+// and sinks are JSON arrays of strings; target is the JSON serialisation of
+// Target. The definition layer (internal/app) validates every field before
+// SaveWatch sees it; the store only enforces its storage invariants.
+const watchesTableSQL = `
+CREATE TABLE IF NOT EXISTS watches (
+	name          TEXT PRIMARY KEY,
+	kind          TEXT NOT NULL,   -- route | road | near
+	target        TEXT NOT NULL,   -- JSON, shape depends on kind
+	windows       TEXT NOT NULL,   -- JSON array of window spec strings
+	min_severity  TEXT NOT NULL DEFAULT '',
+	sinks         TEXT NOT NULL,   -- JSON array of sink names from the config
+	interval_secs INTEGER NOT NULL,
+	created_at    TEXT NOT NULL
+);
+`
+
+// Target is the stored target of a watch: what the watch looks at. It is a
+// tagged union; the watch's kind column (WatchKind*) says which fields are
+// meaningful, and the JSON stored in the target column is exactly this
+// shape:
+//
+//	route: {"route":"trabajo"}
+//	road:  {"road":"AP-7","pk_from":600,"pk_to":700}   (PK bounds optional)
+//	near:  {"place":"casa","radius_km":15}
+//	near:  {"lat":38.3452,"lon":-0.481,"radius_km":15}
+//
+// The store never interprets the fields; the definition layer
+// (internal/app) owns validation and translation into filter criteria.
+type Target struct {
+	// Route is the saved route name (kind "route").
+	Route string `json:"route,omitempty"`
+	// Road is the road name (kind "road"), already normalised by the
+	// definition layer.
+	Road string `json:"road,omitempty"`
+	// PKFrom and PKTo are the optional kilometre bounds (kind "road"); a
+	// nil bound is an open end, exactly the filter.Range convention.
+	PKFrom *float64 `json:"pk_from,omitempty"`
+	PKTo   *float64 `json:"pk_to,omitempty"`
+	// Place is the saved place name centring the radius (kind "near").
+	// Mutually exclusive with Lat/Lon by construction.
+	Place string `json:"place,omitempty"`
+	// Lat and Lon are the radius centre when no place name is used
+	// (kind "near"). Pointers, so a legitimate 0.0 coordinate never reads
+	// as "absent".
+	Lat *float64 `json:"lat,omitempty"`
+	Lon *float64 `json:"lon,omitempty"`
+	// RadiusKm is the radius of the near watch in kilometres (kind "near").
+	RadiusKm float64 `json:"radius_km,omitempty"`
+}
+
+// Watch is one saved watch definition, mirroring the watches columns. The
+// JSON columns are typed here (Target, window specs, sink names) so callers
+// never handle the raw storage shapes.
+type Watch struct {
+	// Name identifies the watch; storage metadata, never sent to any sink
+	// (P-07). It is the primary key: SaveWatch upserts by name.
+	Name string
+	// Kind is one of the WatchKind* constants.
+	Kind string
+	// Target is what the watch looks at; fields not meaningful for Kind
+	// stay at their zero values.
+	Target Target
+	// Windows are the window spec strings ("lun-vie 07:00-09:00") the
+	// definition layer parsed; they are stored verbatim and re-parsed on
+	// read, so a stored watch round-trips through internal/window.
+	Windows []string
+	// MinSeverity is the severity floor ("", "low", "medium" or "high").
+	MinSeverity string
+	// Sinks are the notification destinations, by config sink name.
+	Sinks []string
+	// IntervalSecs is the polling interval in seconds.
+	IntervalSecs int
+	// CreatedAt is when the watch was saved.
+	CreatedAt time.Time
+}
 
 // Open opens (and creates when missing) the SQLite database at path. The
 // file is created with mode 0600 and its directory with 0700, because the
@@ -291,6 +394,164 @@ func isBusyError(err error) bool {
 	return strings.Contains(msg, "SQLITE_BUSY") ||
 		strings.Contains(msg, "SQLITE_LOCKED") ||
 		strings.Contains(msg, "database is locked")
+}
+
+// SaveWatch inserts or replaces one watch definition, keyed by its name
+// (the watches primary key): the second SaveWatch of a name is an upsert
+// that overwrites every column, so re-adding a watch redefines it. The
+// definition layer validates the fields; the store enforces only its
+// storage invariants (a name, a known kind, a positive interval, targets
+// and string lists that serialise).
+func (s *Store) SaveWatch(w Watch) error {
+	if w.Name == "" {
+		return errs.NewInternal("la vigilancia no tiene nombre")
+	}
+	switch w.Kind {
+	case WatchKindRoute, WatchKindRoad, WatchKindNear:
+	default:
+		return errs.NewInternal(fmt.Sprintf("la vigilancia %q tiene una clase de objetivo desconocida %q", w.Name, w.Kind))
+	}
+	if w.IntervalSecs <= 0 {
+		return errs.NewInternal(fmt.Sprintf("la vigilancia %q tiene un intervalo no positivo (%d)", w.Name, w.IntervalSecs))
+	}
+	target, err := json.Marshal(w.Target)
+	if err != nil {
+		return fmt.Errorf("store: no se pudo serializar el objetivo de la vigilancia %q: %w", w.Name, err)
+	}
+	windows, err := json.Marshal(nonNilStrings(w.Windows))
+	if err != nil {
+		return fmt.Errorf("store: no se pudo serializar las ventanas de la vigilancia %q: %w", w.Name, err)
+	}
+	sinks, err := json.Marshal(nonNilStrings(w.Sinks))
+	if err != nil {
+		return fmt.Errorf("store: no se pudo serializar los destinos de la vigilancia %q: %w", w.Name, err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO watches
+		(name, kind, target, windows, min_severity, sinks, interval_secs, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			kind = excluded.kind,
+			target = excluded.target,
+			windows = excluded.windows,
+			min_severity = excluded.min_severity,
+			sinks = excluded.sinks,
+			interval_secs = excluded.interval_secs,
+			created_at = excluded.created_at`,
+		w.Name, w.Kind, string(target), string(windows), w.MinSeverity, string(sinks),
+		w.IntervalSecs, storeTime(w.CreatedAt)); err != nil {
+		return fmt.Errorf("store: no se pudo guardar la vigilancia %q: %w", w.Name, err)
+	}
+	return nil
+}
+
+// Watch returns the stored definition of one watch. An absent name is a
+// not_found error (exit 4, ARRANQUE §6.3: "vigilancia inexistente").
+func (s *Store) Watch(name string) (Watch, error) {
+	row := s.db.QueryRow(`SELECT kind, target, windows, min_severity, sinks, interval_secs, created_at
+		FROM watches WHERE name = ?`, name)
+	var (
+		w         Watch
+		target    string
+		windows   string
+		sinks     string
+		createdAt string
+	)
+	err := row.Scan(&w.Kind, &target, &windows, &w.MinSeverity, &sinks, &w.IntervalSecs, &createdAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Watch{}, errs.NewNotFound(fmt.Sprintf("no existe la vigilancia %q", name))
+		}
+		return Watch{}, fmt.Errorf("store: no se pudo leer la vigilancia %q: %w", name, err)
+	}
+	if err := decodeWatchFields(&w, target, windows, sinks, createdAt, name); err != nil {
+		return Watch{}, err
+	}
+	w.Name = name
+	return w, nil
+}
+
+// Watches returns every stored watch definition, ordered by name, so the
+// listing is stable whatever order the rows come back in.
+func (s *Store) Watches() ([]Watch, error) {
+	rows, err := s.db.Query(`SELECT name, kind, target, windows, min_severity, sinks, interval_secs, created_at
+		FROM watches ORDER BY name ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("store: no se pudo leer las vigilancias: %w", err)
+	}
+	defer rows.Close()
+
+	watches := []Watch{}
+	for rows.Next() {
+		var (
+			name      string
+			w         Watch
+			target    string
+			windows   string
+			sinks     string
+			createdAt string
+		)
+		if err := rows.Scan(&name, &w.Kind, &target, &windows, &w.MinSeverity, &sinks, &w.IntervalSecs, &createdAt); err != nil {
+			return nil, fmt.Errorf("store: vigilancia ilegible: %w", err)
+		}
+		if err := decodeWatchFields(&w, target, windows, sinks, createdAt, name); err != nil {
+			return nil, err
+		}
+		w.Name = name
+		watches = append(watches, w)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: no se pudo leer las vigilancias: %w", err)
+	}
+	return watches, nil
+}
+
+// DeleteWatch removes the definition of one watch. An absent name is a
+// not_found error, never a silent success: deleting a watch that does not
+// exist is a caller mistake worth reporting. The stored state and events of
+// the watch are history, not definition; pruning them is not this method's
+// job.
+func (s *Store) DeleteWatch(name string) error {
+	result, err := s.db.Exec("DELETE FROM watches WHERE name = ?", name)
+	if err != nil {
+		return fmt.Errorf("store: no se pudo eliminar la vigilancia %q: %w", name, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("store: no se pudo verificar la vigilancia %q: %w", name, err)
+	} else if affected == 0 {
+		return errs.NewNotFound(fmt.Sprintf("no existe la vigilancia %q", name))
+	}
+	return nil
+}
+
+// decodeWatchFields unmarshals the JSON columns and the stored timestamp of
+// one watches row into w, wrapping every failure with the watch name so the
+// error says which row is unreadable.
+func decodeWatchFields(w *Watch, target, windows, sinks, createdAt, name string) error {
+	if err := json.Unmarshal([]byte(target), &w.Target); err != nil {
+		return fmt.Errorf("store: la vigilancia %q tiene un objetivo ilegible: %w", name, err)
+	}
+	if err := json.Unmarshal([]byte(windows), &w.Windows); err != nil {
+		return fmt.Errorf("store: la vigilancia %q tiene ventanas ilegibles: %w", name, err)
+	}
+	if err := json.Unmarshal([]byte(sinks), &w.Sinks); err != nil {
+		return fmt.Errorf("store: la vigilancia %q tiene destinos ilegibles: %w", name, err)
+	}
+	created, err := parseStoredTime(createdAt)
+	if err != nil {
+		return fmt.Errorf("store: la vigilancia %q tiene una fecha de creación ilegible: %w", name, err)
+	}
+	w.CreatedAt = created
+	return nil
+}
+
+// nonNilStrings normalises a nullable string list to a slice that always
+// serialises as a JSON array, never null: the columns are NOT NULL and a
+// "null" column would read back as nil and break range loops in callers.
+func nonNilStrings(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
 }
 
 // PreviousState returns the stored snapshot of one watch: one entry per

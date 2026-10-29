@@ -102,6 +102,13 @@ func ValidateInterval(d time.Duration) error {
 //     "cleared" notification; a reappearance resets the counter.
 //   - Window (S4): outside every window the check does not run, stores
 //     nothing and returns Skipped.
+//   - Dedupe: the caller may hand the same incident more than once in one
+//     Check (a route watch maps one incident to one criteria per segment, so
+//     an incident whose PK range overlaps two segments arrives twice). The
+//     incident id is the identity: within one Check an id produces at most
+//     one event of each kind, so no watch notifies twice for the same thing.
+//     Duplicates are not deduped by content, only by id; the first
+//     occurrence wins.
 //
 // Events are appended to the log BEFORE the snapshot is replaced, so a crash
 // in between can at worst duplicate a notification on the next run, never
@@ -135,6 +142,10 @@ func (w *Watcher) Check(def Definition, incidents []model.Incident, now time.Tim
 
 	var events []store.Event
 	next := make(map[string]store.IncidentState, len(incidents)+1)
+	// Dedupe by id (see the Check rules): the first occurrence of an
+	// incident id wins, later ones are the same incident seen through
+	// another segment.
+	seen := make(map[string]struct{}, len(incidents))
 
 	for _, incident := range incidents {
 		if incident.ID == baselineKey {
@@ -142,6 +153,10 @@ func (w *Watcher) Check(def Definition, incidents []model.Incident, now time.Tim
 			// sentinel, whatever another package promises about id shapes.
 			continue
 		}
+		if _, duplicate := seen[incident.ID]; duplicate {
+			continue
+		}
+		seen[incident.ID] = struct{}{}
 		state := incidentStateOf(incident, now)
 		before, seen := previous[incident.ID]
 		switch {
@@ -192,13 +207,19 @@ func anyWindowMatches(windows []window.Window, now time.Time) bool {
 
 // currentSnapshot builds the state of a baseline check: every incident seen,
 // no absence counted yet. The sentinel guard keeps the marker row private
-// even if a feed incident ever carried its id.
+// even if a feed incident ever carried its id, and the same id dedupe as
+// Check applies: the first occurrence of an id wins.
 func currentSnapshot(incidents []model.Incident, now time.Time) map[string]store.IncidentState {
 	snapshot := make(map[string]store.IncidentState, len(incidents)+1)
+	seen := make(map[string]struct{}, len(incidents))
 	for _, incident := range incidents {
 		if incident.ID == baselineKey {
 			continue
 		}
+		if _, duplicate := seen[incident.ID]; duplicate {
+			continue
+		}
+		seen[incident.ID] = struct{}{}
 		snapshot[incident.ID] = incidentStateOf(incident, now)
 	}
 	return snapshot
