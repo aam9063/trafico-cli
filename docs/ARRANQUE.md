@@ -170,7 +170,7 @@ Los campos exactos se confirman en SPIKE-01. Si un campo no existe en el feed, n
 | `trafico radars [filtros]` | Radares fijos |
 | `trafico sections --kind invive\|animals [filtros]` | Tramos especiales |
 | `trafico watch add route\|road\|near ...` / `list` / `remove` / `check` / `run` | Vigilancias |
-| `trafico watch service install / uninstall / status` | Programar `watch check` con systemd o launchd |
+| `trafico watch service install / uninstall / status` | Programar `watch run` con systemd o launchd |
 | `trafico sink list / test` | Destinos de avisos (ntfy, webhook, exec) |
 | `trafico feeds list` / `status` | URLs, última descarga, fecha de publicación, tamaño, estado |
 | `trafico doctor` | Config, red, feeds, programador |

@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"runtime"
 	"time"
 
 	"github.com/aam9063/trafico-cli/internal/app"
@@ -9,6 +12,7 @@ import (
 	"github.com/aam9063/trafico-cli/internal/errs"
 	"github.com/aam9063/trafico-cli/internal/feeds"
 	"github.com/aam9063/trafico-cli/internal/output"
+	"github.com/aam9063/trafico-cli/internal/service"
 	"github.com/aam9063/trafico-cli/internal/store"
 	"github.com/aam9063/trafico-cli/internal/watch"
 
@@ -132,8 +136,271 @@ func newWatchCommand() *cobra.Command {
 		newWatchRemoveCommand(),
 		newWatchCheckCommand(),
 		newWatchRunCommand(),
+		newWatchServiceCommand(),
 	)
 	return watchCmd
+}
+
+// serviceContext builds the environment the `watch service` commands run in:
+// the real home directory, the running binary, the real command runner and
+// the platform detected at build time. It is a package variable so the tests
+// replace it and never touch the real scheduler (systemctl, launchctl) nor
+// the user's home.
+var serviceContext = func() (service.Env, service.Platform, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return service.Env{}, "", errs.NewInternal(fmt.Sprintf("no se pudo determinar el directorio del usuario: %v", err))
+	}
+	bin, err := os.Executable()
+	if err != nil {
+		return service.Env{}, "", errs.NewInternal(fmt.Sprintf("no se pudo determinar la ruta del binario: %v", err))
+	}
+	return service.Env{HomeDir: home, BinPath: bin, Runner: service.SystemRunner{}}, service.Platform(runtime.GOOS), nil
+}
+
+// serviceInfo is the JSON contract of `trafico watch service ...`: the
+// platform scheduler state plus the unit files written (install), removed
+// (uninstall) or present (status). The unit files carry the binary path and
+// live under the user's home, so they stay local (P-07).
+type serviceInfo struct {
+	Platform  string   `json:"platform"`
+	Scheduler string   `json:"scheduler"`
+	Installed bool     `json:"installed"`
+	Active    bool     `json:"active"`
+	Message   string   `json:"message,omitempty"`
+	Files     []string `json:"files"`
+}
+
+// serviceResponse is the JSON contract of the `watch service` commands.
+type serviceResponse struct {
+	output.Envelope
+	Service serviceInfo `json:"service"`
+}
+
+// newWatchServiceCommand builds `trafico watch service` with its install,
+// uninstall and status subcommands (docs/ARRANQUE.md §5.1, WATCH-02). It
+// schedules `trafico watch run` with the platform scheduler: systemd user
+// units on Linux, a launchd LaunchAgent on macOS.
+func newWatchServiceCommand() *cobra.Command {
+	serviceCmd := &cobra.Command{
+		Use:   "service",
+		Short: "Schedule the vigilance cycle with the platform scheduler (systemd or launchd)",
+		// Cobra only rejects unknown subcommands under the root: validate
+		// here too so `trafico watch service bogus` is an invalid argument
+		// (exit 2, ARRANQUE §6.3) instead of a silent help print (exit 0).
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return errs.NewUsage(fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return errs.NewUsage("indica un subcomando: install, uninstall o status")
+		},
+	}
+	serviceCmd.AddCommand(
+		newWatchServiceInstallCommand(),
+		newWatchServiceUninstallCommand(),
+		newWatchServiceStatusCommand(),
+	)
+	return serviceCmd
+}
+
+// newWatchServiceInstallCommand builds `trafico watch service install
+// [--interval 5m]`.
+func newWatchServiceInstallCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install the scheduler units that run the vigilance cycle every interval",
+		Long: "Install the scheduler units that run `trafico watch run` every interval.\n\n" +
+			"Linux: writes trafico-watch.service and trafico-watch.timer under the\n" +
+			"systemd user unit directory and enables the timer. macOS: writes\n" +
+			"com.aam9063.trafico.watch.plist under ~/Library/LaunchAgents and loads it.\n" +
+			"The JSON envelope lists the files written. Windows has no integration:\n" +
+			"the command fails with a clear message instead of pretending.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return errs.NewUsage(fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()))
+			}
+			return nil
+		},
+		RunE: runWatchServiceInstall,
+	}
+	cmd.Flags().String("interval", "", "intervalo entre comprobaciones, 2 minutos como mínimo y 5 por defecto (--interval 5m)")
+	addPrettyFlag(cmd)
+	return cmd
+}
+
+// runWatchServiceInstall generates the units of the platform, writes them and
+// activates them through the scheduler.
+func runWatchServiceInstall(cmd *cobra.Command, args []string) error {
+	interval, err := parseServiceInterval(cmd)
+	if err != nil {
+		return err
+	}
+	env, platform, err := serviceContext()
+	if err != nil {
+		return err
+	}
+	written, err := service.Install(env, platform, service.Options{Interval: interval})
+	if err != nil {
+		return translateServiceError(err)
+	}
+	st, err := service.Status(env, platform)
+	if err != nil {
+		return translateServiceError(err)
+	}
+	return writeServiceResponse(cmd, serviceInfoView(platform, st, written))
+}
+
+// newWatchServiceUninstallCommand builds `trafico watch service uninstall`.
+func newWatchServiceUninstallCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Remove the scheduler units of the vigilance cycle, leaving no leftovers",
+		Long: "Remove the scheduler units of the vigilance cycle and stop the scheduler\n" +
+			"entry. The JSON envelope lists the files removed. Uninstalling what is\n" +
+			"not installed succeeds and removes nothing.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return errs.NewUsage(fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()))
+			}
+			return nil
+		},
+		RunE: runWatchServiceUninstall,
+	}
+	addPrettyFlag(cmd)
+	return cmd
+}
+
+// runWatchServiceUninstall stops the scheduler entry and removes exactly the
+// files install wrote (spec S9). It is a no-op when nothing is installed.
+func runWatchServiceUninstall(cmd *cobra.Command, args []string) error {
+	env, platform, err := serviceContext()
+	if err != nil {
+		return err
+	}
+	removed, err := service.Uninstall(env, platform)
+	if err != nil {
+		return translateServiceError(err)
+	}
+	st, err := service.Status(env, platform)
+	if err != nil {
+		return translateServiceError(err)
+	}
+	return writeServiceResponse(cmd, serviceInfoView(platform, st, removed))
+}
+
+// newWatchServiceStatusCommand builds `trafico watch service status`.
+func newWatchServiceStatusCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Report whether the vigilance cycle is installed and active in the scheduler",
+		Long: "Report whether the vigilance cycle is installed in the platform scheduler\n" +
+			"and whether the scheduler reports it active. Status of a machine without\n" +
+			"the service exits 0 with a \"no instalado\" report: it is a query, not a\n" +
+			"failure.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return errs.NewUsage(fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()))
+			}
+			return nil
+		},
+		RunE: runWatchServiceStatus,
+	}
+	addPrettyFlag(cmd)
+	return cmd
+}
+
+// runWatchServiceStatus reports the scheduler state. Being installed or not
+// is not an error: a missing installation exits 0 with a report (WATCH-02).
+func runWatchServiceStatus(cmd *cobra.Command, args []string) error {
+	env, platform, err := serviceContext()
+	if err != nil {
+		return err
+	}
+	st, err := service.Status(env, platform)
+	if err != nil {
+		return translateServiceError(err)
+	}
+	info := serviceInfoView(platform, st, st.Files)
+	if st.Installed {
+		info.Message = "instalado"
+	} else {
+		info.Message = "no instalado"
+	}
+	return writeServiceResponse(cmd, info)
+}
+
+// parseServiceInterval reads --interval: empty means the watch default (5
+// minutes, S6) and anything below the two-minute minimum is a usage error,
+// the same rule the watch definitions apply.
+func parseServiceInterval(cmd *cobra.Command) (time.Duration, error) {
+	value, _ := cmd.Flags().GetString("interval")
+	if value == "" {
+		return watch.DefaultInterval, nil
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, errs.NewUsage(fmt.Sprintf("--interval debe ser una duración, por ejemplo 5m o 10m (recibido %q)", value))
+	}
+	if err := watch.ValidateInterval(parsed); err != nil {
+		return 0, err
+	}
+	return parsed, nil
+}
+
+// translateServiceError maps the typed errors of the service layer onto the
+// exit-code contract: an unsupported platform is a usage error (exit 2)
+// carried by its own Spanish message, everything else stays whatever it is
+// (an unwrapped error becomes an internal envelope, exit 1).
+func translateServiceError(err error) error {
+	var unsupported *service.UnsupportedError
+	if errors.As(err, &unsupported) {
+		return errs.NewUsage(unsupported.Error())
+	}
+	return err
+}
+
+// schedulerName names the platform scheduler for the JSON contract.
+func schedulerName(platform service.Platform) string {
+	switch platform {
+	case service.PlatformLinux:
+		return "systemd"
+	case service.PlatformDarwin:
+		return "launchd"
+	default:
+		return ""
+	}
+}
+
+// serviceInfoView renders the platform state plus the unit files the command
+// wrote, removed or found.
+func serviceInfoView(platform service.Platform, st service.StatusReport, files []string) serviceInfo {
+	info := serviceInfo{
+		Platform:  string(platform),
+		Scheduler: schedulerName(platform),
+		Installed: st.Installed,
+		Active:    st.Active,
+		Files:     files,
+	}
+	if info.Files == nil {
+		info.Files = []string{}
+	}
+	return info
+}
+
+// writeServiceResponse renders the service envelope. The service commands
+// touch no feed, so meta carries no published_at (nothing was fetched and
+// nothing can be stale).
+func writeServiceResponse(cmd *cobra.Command, info serviceInfo) error {
+	meta := &output.Meta{FetchedAt: time.Now().UTC()}
+	response := serviceResponse{
+		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
+		Service:  info,
+	}
+	pretty, _ := cmd.Flags().GetBool("pretty")
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 
 // newWatchAddCommand builds `trafico watch add <name> (route <ruta> |
