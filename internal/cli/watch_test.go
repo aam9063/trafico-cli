@@ -329,14 +329,134 @@ func TestWatchAddRejectsUnbuildableSink(t *testing.T) {
 		t.Errorf("stdout must stay empty, got %q", stdout.String())
 	}
 	errObj := expectEnvelope(t, stderr, "usage")
-	if msg, _ := errObj["message"].(string); !strings.Contains(msg, "telegram") {
-		t.Errorf("error.message = %q, want it to name the telegram sink problem", msg)
+	if msg, _ := errObj["message"].(string); !strings.Contains(msg, "telegram") || !strings.Contains(msg, "chat_id") {
+		t.Errorf("error.message = %q, want it to name the telegram sink and the missing chat_id field", msg)
 	}
 
 	// The rejected add stored nothing.
 	_, stdout, _ = runCLI(t, "watch", "list")
 	if watches, _ := decodeJSON(t, stdout)["watches"].([]any); len(watches) != 0 {
 		t.Errorf("watch list after the rejected add = %v, want empty", watches)
+	}
+}
+
+// writeTelegramWatchConfig writes a config like writeWatchConfig but with
+// a telegram webhook sink that carries its chat_id, so a watch can deliver
+// through it without leaving localhost.
+func writeTelegramWatchConfig(t *testing.T, srvURL string) {
+	t.Helper()
+	dir := os.Getenv("XDG_CONFIG_HOME")
+	path := filepath.Join(dir, "trafico-cli", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("creating the config directory: %v", err)
+	}
+	content := fmt.Sprintf(`[feeds.dgt-situations]
+url = "%s/situations"
+enabled = true
+
+[places]
+casa = "38.3452,-0.4810"
+
+[routes.trabajo]
+direction = "both"
+segments = ["A-372:40-55"]
+
+[sinks.telegram]
+type = "webhook"
+template = "telegram"
+url = "%s/notify"
+chat_id = "12345678"
+`, srvURL, srvURL)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing the config file: %v", err)
+	}
+}
+
+// TestWatchAddAcceptsTelegramWithChatID pins the config plumbing of the
+// telegram template: a webhook sink with template telegram and a chat_id is
+// constructible, so `watch add` accepts it (exit 0); the same sink without
+// a chat_id stays a usage error naming the field.
+func TestWatchAddAcceptsTelegramWithChatID(t *testing.T) {
+	setCLIEnv(t)
+	srv := newWatchServer(t)
+	writeTelegramWatchConfig(t, srv.URL)
+	inWindow, _ := watchWindowsNow(t)
+
+	code, stdout, stderr := runCLI(t, "watch", "add", "tg", "route", "trabajo", "--window", inWindow, "--notify", "telegram")
+	if code != errs.ExitSuccess {
+		t.Fatalf("watch add with a telegram sink with chat_id exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+	watches, _ := decodeJSON(t, stdout)["watches"].([]any)
+	if len(watches) != 1 {
+		t.Fatalf("watch add response = %v, want the stored watch", watches)
+	}
+}
+
+// TestWatchRunEmitInitialAnnouncesBaseline pins the --emit-initial opt-in
+// through the public interface: a watch added with --emit-initial announces
+// with incident.new every incident already present at its first check, and
+// the choice is stored with the watch, while a watch without it keeps the
+// silent baseline (S3).
+func TestWatchRunEmitInitialAnnouncesBaseline(t *testing.T) {
+	setCLIEnv(t)
+	srv := newWatchServer(t)
+	writeWatchConfig(t, srv.URL)
+	inWindow, _ := watchWindowsNow(t)
+	if code, _, stderr := runCLI(t, "watch", "add", "inicial", "route", "trabajo", "--window", inWindow, "--notify", "phone", "--emit-initial"); code != errs.ExitSuccess {
+		t.Fatalf("watch add --emit-initial exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+	if code, _, stderr := runCLI(t, "watch", "add", "silenciosa", "route", "trabajo", "--window", inWindow, "--notify", "phone"); code != errs.ExitSuccess {
+		t.Fatalf("watch add exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+
+	code, stdout, stderr := runCLI(t, "watch", "run")
+	if code != errs.ExitSuccess {
+		t.Fatalf("watch run exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+	doc := decodeJSON(t, stdout)
+	runs, _ := doc["runs"].([]any)
+	if len(runs) != 2 {
+		t.Fatalf("runs = %v, want one entry per watch", doc["runs"])
+	}
+	byName := map[string]map[string]any{}
+	for _, r := range runs {
+		entry := r.(map[string]any)
+		byName[entry["watch"].(string)] = entry
+	}
+	inicial := byName["inicial"]
+	if inicial == nil || inicial["baseline"] != true {
+		t.Fatalf("inicial entry = %v, want a baseline entry", inicial)
+	}
+	events, _ := inicial["events"].(float64)
+	if events < 1 {
+		t.Fatalf("inicial events = %v, want at least one incident.new at the baseline", inicial)
+	}
+	for _, kind := range inicial["kinds"].([]any) {
+		if kind != "incident.new" {
+			t.Errorf("inicial kind = %v, want incident.new", kind)
+		}
+	}
+	silenciosa := byName["silenciosa"]
+	if silenciosa == nil || silenciosa["baseline"] != true {
+		t.Fatalf("silenciosa entry = %v, want a baseline entry", silenciosa)
+	}
+	if _, ok := silenciosa["events"]; ok {
+		t.Errorf("silenciosa entry = %v, want no events at the silent baseline (S3)", silenciosa)
+	}
+	if doc["delivered"] != inicial["events"] {
+		t.Errorf("delivered = %v, want %v (the emit-initial events went to the sink)", doc["delivered"], inicial["events"])
+	}
+
+	// The choice is stored with the watch: show renders it.
+	_, stdout, _ = runCLI(t, "watch", "show", "inicial")
+	shown := decodeJSON(t, stdout)["watch"].(map[string]any)
+	if shown["emit_initial"] != true {
+		t.Errorf("watch show emit_initial = %v, want true", shown["emit_initial"])
+	}
+	_, stdout, _ = runCLI(t, "watch", "show", "silenciosa")
+	shown = decodeJSON(t, stdout)["watch"].(map[string]any)
+	if shown["emit_initial"] == true {
+		t.Errorf("watch show emit_initial = %v, want false (absent)", shown["emit_initial"])
 	}
 }
 

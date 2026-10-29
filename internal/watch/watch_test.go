@@ -95,6 +95,79 @@ func TestCheckBaselineStoresSnapshotAndEmitsNothing(t *testing.T) {
 	}
 }
 
+// TestCheckEmitInitialEmitsNewForEveryBaselineIncident covers the
+// --emit-initial opt-in of docs/ARRANQUE.md §5.5: a watch defined with it
+// announces with incident.new every incident already present at the baseline
+// check, once each, and stores the snapshot exactly like the silent
+// baseline does — the same incidents on the next check are not news.
+func TestCheckEmitInitialEmitsNewForEveryBaselineIncident(t *testing.T) {
+	st := openTestStore(t)
+	def := Definition{Name: "trabajo", EmitInitial: true}
+	incidents := []model.Incident{
+		incidentFixture("SIT-1", "medium"),
+		incidentFixture("SIT-2", "high"),
+	}
+
+	result := runBaseline(t, st, def, incidents)
+
+	if result.Skipped {
+		t.Fatalf("baseline check reported Skipped = true, want false")
+	}
+	if len(result.Events) != 2 {
+		t.Fatalf("emit-initial baseline emitted %d events, want 2: %+v", len(result.Events), result.Events)
+	}
+	seen := make(map[string]string, len(result.Events))
+	for _, event := range result.Events {
+		if event.Kind != store.EventIncidentNew {
+			t.Errorf("event kind = %q, want %q", event.Kind, store.EventIncidentNew)
+		}
+		seen[event.IncidentID] = event.Kind
+	}
+	if len(seen) != 2 || seen["dgt:SIT-1"] == "" || seen["dgt:SIT-2"] == "" {
+		t.Errorf("emitted incidents = %v, want one incident.new per baseline incident", seen)
+	}
+
+	// The snapshot is stored like the silent baseline: nothing fires again.
+	second, err := NewWatcher(st).Check(def, incidents, checkNow.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("second Check: %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Errorf("second check emitted %d events, want 0: %+v", len(second.Events), second.Events)
+	}
+	prev, err := st.PreviousState("trabajo")
+	if err != nil {
+		t.Fatalf("PreviousState: %v", err)
+	}
+	for _, id := range []string{"dgt:SIT-1", "dgt:SIT-2"} {
+		if _, ok := prev[id]; !ok {
+			t.Errorf("baseline did not store %q: %+v", id, prev)
+		}
+	}
+}
+
+// TestCheckEmitInitialWithEmptyBaselineEmitsNothing: with no incident
+// present, --emit-initial announces nothing and the watch still gets its
+// baseline — an empty check must never swallow the first real incident,
+// which is exactly why the baseline sentinel exists.
+func TestCheckEmitInitialWithEmptyBaselineEmitsNothing(t *testing.T) {
+	st := openTestStore(t)
+	def := Definition{Name: "trabajo", EmitInitial: true}
+
+	result := runBaseline(t, st, def, nil)
+	if len(result.Events) != 0 {
+		t.Fatalf("empty emit-initial baseline emitted %d events, want 0", len(result.Events))
+	}
+
+	second, err := NewWatcher(st).Check(def, []model.Incident{incidentFixture("SIT-1", "medium")}, checkNow.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("second Check: %v", err)
+	}
+	if len(second.Events) != 1 || second.Events[0].Kind != store.EventIncidentNew || second.Events[0].IncidentID != "dgt:SIT-1" {
+		t.Fatalf("second check events = %+v, want exactly one incident.new for dgt:SIT-1", second.Events)
+	}
+}
+
 // TestCheckSecondSnapshotEmitsExactlyOneNew covers S10: two consecutive
 // snapshots where one incident appears produce exactly one incident.new.
 func TestCheckSecondSnapshotEmitsExactlyOneNew(t *testing.T) {

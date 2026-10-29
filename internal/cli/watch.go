@@ -40,6 +40,7 @@ type watchInfo struct {
 	Target      watchTargetInfo `json:"target"`
 	Windows     []string        `json:"windows"`
 	MinSeverity string          `json:"min_severity,omitempty"`
+	EmitInitial bool            `json:"emit_initial,omitempty"`
 	Sinks       []string        `json:"sinks,omitempty"`
 	Interval    string          `json:"interval"`
 	CreatedAt   time.Time       `json:"created_at"`
@@ -414,8 +415,9 @@ func newWatchAddCommand() *cobra.Command {
 		Long: "Save a watch over a route, a road or the surroundings of a place.\n\n" +
 			"A watch needs at least one --window (outside it there is no check and no\n" +
 			"notification). The first check after adding records the baseline silently:\n" +
-			"what was already happening does not notify. An existing watch with the same\n" +
-			"name is REPLACED, which is the only way to edit one.",
+			"what was already happening does not notify. With --emit-initial the first\n" +
+			"check announces it with incident.new instead. An existing watch with the\n" +
+			"same name is REPLACED, which is the only way to edit one.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 3 {
 				return errs.NewUsage("indica el nombre, la clase y el objetivo: trafico watch add <nombre> (route <ruta> | road <carretera> | near <lugar>)")
@@ -430,6 +432,7 @@ func newWatchAddCommand() *cobra.Command {
 	cmd.Flags().String("min-severity", "", "severidad mínima: low, medium o high")
 	cmd.Flags().StringArray("notify", nil, "destino del aviso definido en [sinks.<nombre>], repetible (--notify phone)")
 	cmd.Flags().String("interval", "", "intervalo mínimo entre comprobaciones, 2 minutos como mínimo y 5 por defecto (--interval 5m)")
+	cmd.Flags().Bool("emit-initial", false, "anunciar con incident.new lo que ya está pasando en la primera comprobación (por defecto la línea base es silenciosa)")
 	addPrettyFlag(cmd)
 	return cmd
 }
@@ -441,6 +444,7 @@ func runWatchAdd(cmd *cobra.Command, args []string) error {
 	windowSpecs, _ := flags.GetStringArray("window")
 	minSeverity, _ := flags.GetString("min-severity")
 	sinks, _ := flags.GetStringArray("notify")
+	emitInitial, _ := flags.GetBool("emit-initial")
 
 	interval := watch.DefaultInterval
 	if value, _ := flags.GetString("interval"); value != "" {
@@ -462,7 +466,7 @@ func runWatchAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer st.Close()
-	spec, err := app.ParseWatchSpec(name, target, windowSpecs, minSeverity, sinks, interval, cfg)
+	spec, err := app.ParseWatchSpec(name, target, windowSpecs, minSeverity, sinks, interval, emitInitial, cfg)
 	if err != nil {
 		return err
 	}
@@ -822,6 +826,7 @@ func watchView(w store.Watch) watchInfo {
 		Kind:        w.Kind,
 		Windows:     w.Windows,
 		MinSeverity: w.MinSeverity,
+		EmitInitial: w.EmitInitial,
 		Sinks:       w.Sinks,
 		Interval:    config.Duration(time.Duration(w.IntervalSecs) * time.Second).String(),
 		CreatedAt:   w.CreatedAt,

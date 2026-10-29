@@ -60,6 +60,9 @@ type Sink struct {
 	// Template selects the payload shape of a webhook sink
 	// ("discord", "slack" or "telegram").
 	Template string `toml:"template"`
+	// ChatID is the destination chat of a telegram webhook sink; required
+	// for template = "telegram", ignored by every other template.
+	ChatID string `toml:"chat_id"`
 }
 
 // Route is one saved route under [routes.<name>] (docs/ARRANQUE.md §5.4 and

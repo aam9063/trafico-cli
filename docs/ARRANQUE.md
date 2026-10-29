@@ -254,11 +254,12 @@ trafico watch add road AP-7 --pk 600-700 --type closure,accident --notify phone
 trafico watch service install --interval 5m
 ```
 
-- **Línea base silenciosa** al crear (salvo `--emit-initial`).
+- **Línea base silenciosa** al crear (salvo `--emit-initial`, que anuncia con `incident.new` en la primera comprobación lo que ya estaba pasando; la elección se guarda con la vigilancia).
 - **Ventanas horarias** (`--window`, mismo formato que el `--when` de booksy-cli, días en español o inglés): fuera de la ventana no se comprueba ni se avisa. Hora de Europe/Madrid.
 - Eventos: `incident.new`, `incident.updated` (cambia severidad, carriles o fin previsto), `incident.cleared` (desaparece en dos comprobaciones seguidas).
 - Intervalo mínimo: 2 minutos. Por defecto: 5.
-- Destinos: `ntfy`, `webhook` (plantillas `discord`, `slack`, `telegram`) y `exec`. **El aviso nunca incluye el nombre ni las coordenadas de tu ruta**: solo carretera, PK, tipo, severidad y la atribución.
+- Salida de `watch run`: una entrada por vigilancia con `baseline` (primera comprobación), `skipped` (fuera de ventana), `skipped_interval` (el intervalo desde la última comprobación real aún no ha pasado) y `events` con sus tipos. La última comprobación real queda registrada en la base de datos (`last_check_at`, §7) y es la que sostiene el intervalo, sea cual sea la frecuencia del planificador.
+- Destinos: `ntfy`, `webhook` (plantillas `discord`, `slack` y `telegram`; la plantilla `telegram` necesita `chat_id` en `[sinks.<nombre>]`) y `exec`. **El aviso nunca incluye el nombre ni las coordenadas de tu ruta**: solo carretera, PK, tipo, severidad y la atribución.
 
 ### 5.6 Frescura
 
@@ -331,6 +332,8 @@ description: Consultar incidencias, obras, paneles y radares de la DGT por carre
 |---|---|---|
 | Config (feeds, lugares, rutas, sinks) | `$XDG_CONFIG_HOME/trafico-cli/config.toml` | `0600` |
 | Base de datos (vigilancias, eventos, estado previo) | `$XDG_DATA_HOME/trafico-cli/trafico.db` | `0600` |
+
+El estado de cada vigilancia vive en la base de datos: la línea base de cada incidente, el contador de ausencias, la elección de `--emit-initial` y `last_check_at` (la última comprobación real que sostiene el intervalo mínimo de §5.5).
 | Caché de feeds | `$XDG_CACHE_HOME/trafico-cli/` | `0600` |
 
 ```toml
@@ -356,6 +359,12 @@ max_age = "10m"
 type = "ntfy"
 url = "https://ntfy.sh"
 topic = "elige-un-topic-largo-y-aleatorio"
+
+[sinks.telegram]
+type = "webhook"
+url = "https://api.telegram.org/bot<token-del-bot>/sendMessage"
+template = "telegram"
+chat_id = "123456789"
 ```
 
 Las URLs por defecto van compiladas en el binario y se pueden sobrescribir en config, para que un cambio de la DGT se arregle sin esperar a una release.

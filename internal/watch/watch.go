@@ -36,14 +36,22 @@ const (
 const baselineKey = "__baseline__"
 
 // Definition is what the caller knows about one watch: its name (storage
-// metadata, never sent to any sink, P-07) and the time windows it is active
-// in. An empty Windows list means the watch runs at every check, 24/7.
+// metadata, never sent to any sink, P-07), the time windows it is active
+// in, and whether the baseline announces what is already happening. An
+// empty Windows list means the watch runs at every check, 24/7.
 type Definition struct {
 	// Name identifies the watch in the store.
 	Name string
 	// Windows are the time windows (Europe/Madrid, parsed by internal/window)
 	// the check may run in. Empty means no restriction.
 	Windows []window.Window
+	// EmitInitial is the opt-in of --emit-initial (docs/ARRANQUE.md §5.5):
+	// the baseline check announces with incident.new every incident already
+	// present instead of staying silent. The default (false) is the silent
+	// baseline of S3. The choice lives with the stored watch definition;
+	// the CLI flag only fills it in — this field is the single knob the
+	// engine reads, so the baseline rule has one owner.
+	EmitInitial bool
 }
 
 // CheckResult is the outcome of one check. Events are already in the store's
@@ -91,8 +99,13 @@ func ValidateInterval(d time.Duration) error {
 //
 //   - Baseline (S3): a watch with no previous state records the current
 //     snapshot and emits nothing. The first run never dumps "new incident"
-//     alerts for what was already happening; --emit-initial (CLI layer,
-//     WATCH-01d) is an opt-in made possible by exactly this behaviour.
+//     alerts for what was already happening. With the --emit-initial
+//     opt-in (Definition.EmitInitial, stored with the watch) the baseline
+//     instead announces with incident.new every incident already present,
+//     once each, and stores the exact same snapshot — so the next check
+//     starts from a baseline either way. The decision lives here, not in
+//     the CLI layer: the flag only tells the engine which behaviour to
+//     use.
 //   - incident.new: present now, absent from the previous snapshot.
 //   - incident.updated: present in both and the severity, the lane list or
 //     the end time changed. Nothing else counts as an update: a driver cares
@@ -131,12 +144,22 @@ func (w *Watcher) Check(def Definition, incidents []model.Incident, now time.Tim
 		return CheckResult{}, err
 	}
 
-	// S3: silent baseline. The sentinel marks the watch as initialised even
-	// when the snapshot is empty.
+	// S3: the baseline. The sentinel marks the watch as initialised even
+	// when the snapshot is empty. Silent by default; with EmitInitial the
+	// baseline announces what is already happening (once per incident), and
+	// the events are appended BEFORE the snapshot is replaced — the same
+	// crash ordering as every other check.
 	if _, hasBaseline := previous[baselineKey]; !hasBaseline {
 		snapshot := currentSnapshot(incidents, now)
 		snapshot[baselineKey] = store.IncidentState{LastSeenAt: now}
-		return CheckResult{}, w.st.ReplaceState(def.Name, snapshot)
+		var events []store.Event
+		if def.EmitInitial {
+			events = initialEvents(def.Name, incidents, now)
+		}
+		if err := w.st.AppendEvents(events); err != nil {
+			return CheckResult{}, err
+		}
+		return CheckResult{Events: events}, w.st.ReplaceState(def.Name, snapshot)
 	}
 	delete(previous, baselineKey)
 
@@ -191,6 +214,26 @@ func (w *Watcher) Check(def Definition, incidents []model.Incident, now time.Tim
 		return CheckResult{}, err
 	}
 	return CheckResult{Events: events}, nil
+}
+
+// initialEvents builds the incident.new events of an --emit-initial
+// baseline: one per distinct incident already present. The same id dedupe
+// as Check applies (the first occurrence wins) and the baseline sentinel
+// never produces an event.
+func initialEvents(watchName string, incidents []model.Incident, now time.Time) []store.Event {
+	var events []store.Event
+	seen := make(map[string]struct{}, len(incidents))
+	for _, incident := range incidents {
+		if incident.ID == baselineKey {
+			continue
+		}
+		if _, duplicate := seen[incident.ID]; duplicate {
+			continue
+		}
+		seen[incident.ID] = struct{}{}
+		events = append(events, newEvent(watchName, incident, store.EventIncidentNew, now))
+	}
+	return events
 }
 
 // anyWindowMatches reports whether the instant falls inside any of the watch

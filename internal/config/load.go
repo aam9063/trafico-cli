@@ -46,6 +46,7 @@ type rawSink struct {
 	URL      *string `toml:"url"`
 	Topic    *string `toml:"topic"`
 	Template *string `toml:"template"`
+	ChatID   *string `toml:"chat_id"`
 }
 
 // Load reads the TOML configuration at path and merges it over the compiled
@@ -142,6 +143,9 @@ func decode(data []byte) (*Config, error) {
 		}
 		if sink.Template != nil {
 			merged.Template = *sink.Template
+		}
+		if sink.ChatID != nil {
+			merged.ChatID = *sink.ChatID
 		}
 		cfg.Sinks[name] = merged
 	}

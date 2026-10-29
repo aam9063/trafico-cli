@@ -1218,6 +1218,77 @@ func TestOpenMigratesV3Database(t *testing.T) {
 	}
 }
 
+// v4SchemaSQL is the schema of store version 4: the version-3 watches table
+// plus the last_check_at column the version-4 step added, exactly as the
+// previous binary left the database after migrating.
+const v4SchemaSQL = v3SchemaSQL + `
+ALTER TABLE watches ADD COLUMN last_check_at TEXT;
+`
+
+// TestOpenMigratesV4Database checks the version-4 → 5 migration: a database
+// with watches but without the emit_initial column opens, the version is
+// bumped, every existing row defaults to EmitInitial = false (the silent
+// baseline stays the default for watches created before --emit-initial
+// existed), and the new column round-trips through SaveWatch/Watch.
+func TestOpenMigratesV4Database(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trafico.db")
+
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if _, err := db.Exec(v4SchemaSQL); err != nil {
+		t.Fatalf("create v4 schema: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 4"); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO watches
+		(name, kind, target, windows, min_severity, sinks, interval_secs, created_at, last_check_at)
+		VALUES ('ruta', 'route', '{"route":"trabajo"}', '["lun-vie 07:00-09:00"]', '', '["phone"]', 300,
+			'2026-10-28T09:00:00.000000000Z', NULL)`); err != nil {
+		t.Fatalf("seed v4 watch row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v4 database: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open on a v4 database: %v", err)
+	}
+	defer s.Close()
+
+	if got := queryUserVersion(t, s); got != schemaVersion {
+		t.Errorf("user_version after migration = %d, want %d", got, schemaVersion)
+	}
+	got, err := s.Watch("ruta")
+	if err != nil {
+		t.Fatalf("Watch after migration: %v", err)
+	}
+	if got.EmitInitial {
+		t.Errorf("migrated watch EmitInitial = true, want false (the default of every existing row)")
+	}
+	if got.Kind != WatchKindRoute || got.IntervalSecs != 300 || !got.LastCheckAt.IsZero() {
+		t.Errorf("migrated watch = %+v, want the stored definition intact", got)
+	}
+
+	// The new column round-trips on the migrated schema.
+	w := watchFixture("nueva", WatchKindRoute)
+	w.Target = Target{Route: "trabajo"}
+	w.EmitInitial = true
+	if err := s.SaveWatch(w); err != nil {
+		t.Fatalf("SaveWatch with EmitInitial: %v", err)
+	}
+	got, err = s.Watch("nueva")
+	if err != nil {
+		t.Fatalf("Watch of the emit-initial watch: %v", err)
+	}
+	if !got.EmitInitial {
+		t.Errorf("EmitInitial after SaveWatch/Watch = false, want true")
+	}
+}
+
 // TestMarkWatchCheckedRecordsLastCheck covers the interval gate's runtime
 // state: MarkWatchChecked records the instant, Watch reads it back, an
 // unknown name is a not_found error, and an upsert of the definition never
