@@ -1141,6 +1141,140 @@ func TestOpenMigratesV2Database(t *testing.T) {
 	}
 }
 
+// v3SchemaSQL is the schema of store version 3: the version-2 schema plus
+// the watches table, exactly as the previous binary left the database after
+// migrating — before the last_check_at column existed.
+const v3SchemaSQL = v2SchemaSQL + `
+CREATE TABLE IF NOT EXISTS watches (
+	name          TEXT PRIMARY KEY,
+	kind          TEXT NOT NULL,
+	target        TEXT NOT NULL,
+	windows       TEXT NOT NULL,
+	min_severity  TEXT NOT NULL DEFAULT '',
+	sinks         TEXT NOT NULL,
+	interval_secs INTEGER NOT NULL,
+	created_at    TEXT NOT NULL
+);
+`
+
+// TestOpenMigratesV3Database checks the version-3 → 4 migration: a database
+// with watches but without the last_check_at column opens, the version is
+// bumped, the stored watch survives with a zero LastCheckAt (it has never
+// run), and the new column round-trips through MarkWatchChecked.
+func TestOpenMigratesV3Database(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trafico.db")
+
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if _, err := db.Exec(v3SchemaSQL); err != nil {
+		t.Fatalf("create v3 schema: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 3"); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO watches
+		(name, kind, target, windows, min_severity, sinks, interval_secs, created_at)
+		VALUES ('ruta', 'route', '{"route":"trabajo"}', '["lun-vie 07:00-09:00"]', '', '["phone"]', 300,
+			'2026-10-28T09:00:00.000000000Z')`); err != nil {
+		t.Fatalf("seed v3 watch row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close v3 database: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open on a v3 database: %v", err)
+	}
+	defer s.Close()
+
+	if got := queryUserVersion(t, s); got != schemaVersion {
+		t.Errorf("user_version after migration = %d, want %d", got, schemaVersion)
+	}
+	got, err := s.Watch("ruta")
+	if err != nil {
+		t.Fatalf("Watch after migration: %v", err)
+	}
+	if got.Kind != WatchKindRoute || got.IntervalSecs != 300 {
+		t.Errorf("migrated watch = %+v, want the stored definition intact", got)
+	}
+	if !got.LastCheckAt.IsZero() {
+		t.Errorf("migrated watch LastCheckAt = %v, want zero (it never ran)", got.LastCheckAt)
+	}
+
+	// The new column round-trips on the migrated schema.
+	at := time.Date(2026, 10, 28, 14, 0, 0, 0, time.UTC)
+	if err := s.MarkWatchChecked("ruta", at); err != nil {
+		t.Fatalf("MarkWatchChecked after migration: %v", err)
+	}
+	got, err = s.Watch("ruta")
+	if err != nil {
+		t.Fatalf("Watch after MarkWatchChecked: %v", err)
+	}
+	if !got.LastCheckAt.Equal(at) {
+		t.Errorf("LastCheckAt after migration = %v, want %v", got.LastCheckAt, at)
+	}
+}
+
+// TestMarkWatchCheckedRecordsLastCheck covers the interval gate's runtime
+// state: MarkWatchChecked records the instant, Watch reads it back, an
+// unknown name is a not_found error, and an upsert of the definition never
+// wipes the recorded last check (the gate is runtime state, not definition).
+func TestMarkWatchCheckedRecordsLastCheck(t *testing.T) {
+	s := openTestStore(t)
+	defer s.Close()
+
+	w := watchFixture("ruta", WatchKindRoute)
+	w.Target = Target{Route: "trabajo"}
+	if err := s.SaveWatch(w); err != nil {
+		t.Fatalf("SaveWatch: %v", err)
+	}
+	got, err := s.Watch("ruta")
+	if err != nil {
+		t.Fatalf("Watch of a never-checked watch: %v", err)
+	}
+	if !got.LastCheckAt.IsZero() {
+		t.Errorf("LastCheckAt of a new watch = %v, want zero", got.LastCheckAt)
+	}
+
+	at := time.Date(2026, 10, 28, 14, 0, 0, 0, time.UTC)
+	if err := s.MarkWatchChecked("ruta", at); err != nil {
+		t.Fatalf("MarkWatchChecked: %v", err)
+	}
+	got, err = s.Watch("ruta")
+	if err != nil {
+		t.Fatalf("Watch after MarkWatchChecked: %v", err)
+	}
+	if !got.LastCheckAt.Equal(at) {
+		t.Errorf("LastCheckAt = %v, want %v", got.LastCheckAt, at)
+	}
+
+	// An unknown name is a not_found error, never a silent success.
+	err = s.MarkWatchChecked("desconocida", at)
+	var errsErr *errs.Error
+	if !errors.As(err, &errsErr) || errsErr.Type != "not_found" {
+		t.Errorf("MarkWatchChecked(unknown) = %v, want a not_found error", err)
+	}
+
+	// Redefining the watch preserves the recorded last check.
+	w.IntervalSecs = 600
+	if err := s.SaveWatch(w); err != nil {
+		t.Fatalf("SaveWatch (upsert): %v", err)
+	}
+	got, err = s.Watch("ruta")
+	if err != nil {
+		t.Fatalf("Watch after the upsert: %v", err)
+	}
+	if got.IntervalSecs != 600 {
+		t.Errorf("IntervalSecs after the upsert = %d, want 600", got.IntervalSecs)
+	}
+	if !got.LastCheckAt.Equal(at) {
+		t.Errorf("LastCheckAt after the upsert = %v, want %v (the upsert must preserve it)", got.LastCheckAt, at)
+	}
+}
+
 // openTestStore opens a database inside t.TempDir() and registers cleanup.
 func openTestStore(t *testing.T) *Store {
 	t.Helper()

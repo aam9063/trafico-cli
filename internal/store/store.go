@@ -25,7 +25,7 @@ import (
 // PRAGMA user_version. Bump it and add a migration step in applyMigrations
 // whenever the schema changes; a database written by a NEWER binary must be
 // refused rather than silently misread.
-const schemaVersion = 3
+const schemaVersion = 4
 
 // migrationSteps, indexed by the version they migrate FROM, bring a database
 // one version forward. Step 0 creates the base (version-1) schema; every
@@ -59,6 +59,17 @@ var migrationSteps = map[int]func(*sql.Tx) error{
 	2: func(tx *sql.Tx) error {
 		if _, err := tx.Exec(watchesTableSQL); err != nil {
 			return fmt.Errorf("no se pudo crear la tabla watches: %w", err)
+		}
+		return nil
+	},
+	// Version 3 → 4: the last_check_at column of the watches table. The run
+	// cycle (S6) must enforce the polling interval itself — "safe to run
+	// from a scheduler every minute" only holds if the cycle remembers when
+	// each watch was last really checked. Existing rows keep NULL (they have
+	// never run under this rule, so they are due).
+	3: func(tx *sql.Tx) error {
+		if _, err := tx.Exec("ALTER TABLE watches ADD COLUMN last_check_at TEXT"); err != nil {
+			return fmt.Errorf("no se pudo añadir la columna last_check_at: %w", err)
 		}
 		return nil
 	},
@@ -177,8 +188,12 @@ CREATE INDEX IF NOT EXISTS idx_watch_events_pending
 // the config file). name is the primary key, so upserting a watch replaces
 // its definition; kind selects which Target fields are meaningful; windows
 // and sinks are JSON arrays of strings; target is the JSON serialisation of
-// Target. The definition layer (internal/app) validates every field before
-// SaveWatch sees it; the store only enforces its storage invariants.
+// Target. last_check_at is added by migration step 3 (both on a fresh
+// install, which runs every step, and on an upgrade), and is the runtime
+// state of the interval gate (S6), written only by MarkWatchChecked — an
+// upsert of the definition never resets it. The definition layer
+// (internal/app) validates every field before SaveWatch sees it; the store
+// only enforces its storage invariants.
 const watchesTableSQL = `
 CREATE TABLE IF NOT EXISTS watches (
 	name          TEXT PRIMARY KEY,
@@ -250,6 +265,11 @@ type Watch struct {
 	IntervalSecs int
 	// CreatedAt is when the watch was saved.
 	CreatedAt time.Time
+	// LastCheckAt is when the run cycle last REALLY checked the watch (the
+	// interval gate of S6); the zero time means it never ran. It is runtime
+	// state written by MarkWatchChecked: saving the definition never
+	// touches it.
+	LastCheckAt time.Time
 }
 
 // Open opens (and creates when missing) the SQLite database at path. The
@@ -398,10 +418,13 @@ func isBusyError(err error) bool {
 
 // SaveWatch inserts or replaces one watch definition, keyed by its name
 // (the watches primary key): the second SaveWatch of a name is an upsert
-// that overwrites every column, so re-adding a watch redefines it. The
-// definition layer validates the fields; the store enforces only its
-// storage invariants (a name, a known kind, a positive interval, targets
-// and string lists that serialise).
+// that overwrites every DEFINITION column, so re-adding a watch redefines
+// it. last_check_at is not one of them: the recorded last check is runtime
+// state of the interval gate, and redefining a watch must not let it hammer
+// the DGT again before its interval has elapsed. The definition layer
+// validates the fields; the store enforces only its storage invariants (a
+// name, a known kind, a positive interval, targets and string lists that
+// serialise).
 func (s *Store) SaveWatch(w Watch) error {
 	if w.Name == "" {
 		return errs.NewInternal("la vigilancia no tiene nombre")
@@ -444,26 +467,43 @@ func (s *Store) SaveWatch(w Watch) error {
 	return nil
 }
 
+// MarkWatchChecked records that the run cycle really checked the watch at
+// the given instant: the runtime state of the interval gate (S6). An absent
+// name is a not_found error, never a silent success.
+func (s *Store) MarkWatchChecked(name string, at time.Time) error {
+	result, err := s.db.Exec("UPDATE watches SET last_check_at = ? WHERE name = ?", storeTime(at), name)
+	if err != nil {
+		return fmt.Errorf("store: no se pudo registrar la comprobación de la vigilancia %q: %w", name, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("store: no se pudo verificar la vigilancia %q: %w", name, err)
+	} else if affected == 0 {
+		return errs.NewNotFound(fmt.Sprintf("no existe la vigilancia %q", name))
+	}
+	return nil
+}
+
 // Watch returns the stored definition of one watch. An absent name is a
 // not_found error (exit 4, ARRANQUE §6.3: "vigilancia inexistente").
 func (s *Store) Watch(name string) (Watch, error) {
-	row := s.db.QueryRow(`SELECT kind, target, windows, min_severity, sinks, interval_secs, created_at
+	row := s.db.QueryRow(`SELECT kind, target, windows, min_severity, sinks, interval_secs, created_at, last_check_at
 		FROM watches WHERE name = ?`, name)
 	var (
-		w         Watch
-		target    string
-		windows   string
-		sinks     string
-		createdAt string
+		w           Watch
+		target      string
+		windows     string
+		sinks       string
+		createdAt   string
+		lastCheckAt sql.NullString
 	)
-	err := row.Scan(&w.Kind, &target, &windows, &w.MinSeverity, &sinks, &w.IntervalSecs, &createdAt)
+	err := row.Scan(&w.Kind, &target, &windows, &w.MinSeverity, &sinks, &w.IntervalSecs, &createdAt, &lastCheckAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Watch{}, errs.NewNotFound(fmt.Sprintf("no existe la vigilancia %q", name))
 		}
 		return Watch{}, fmt.Errorf("store: no se pudo leer la vigilancia %q: %w", name, err)
 	}
-	if err := decodeWatchFields(&w, target, windows, sinks, createdAt, name); err != nil {
+	if err := decodeWatchFields(&w, target, windows, sinks, createdAt, lastCheckAt, name); err != nil {
 		return Watch{}, err
 	}
 	w.Name = name
@@ -473,7 +513,7 @@ func (s *Store) Watch(name string) (Watch, error) {
 // Watches returns every stored watch definition, ordered by name, so the
 // listing is stable whatever order the rows come back in.
 func (s *Store) Watches() ([]Watch, error) {
-	rows, err := s.db.Query(`SELECT name, kind, target, windows, min_severity, sinks, interval_secs, created_at
+	rows, err := s.db.Query(`SELECT name, kind, target, windows, min_severity, sinks, interval_secs, created_at, last_check_at
 		FROM watches ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: no se pudo leer las vigilancias: %w", err)
@@ -483,17 +523,18 @@ func (s *Store) Watches() ([]Watch, error) {
 	watches := []Watch{}
 	for rows.Next() {
 		var (
-			name      string
-			w         Watch
-			target    string
-			windows   string
-			sinks     string
-			createdAt string
+			name        string
+			w           Watch
+			target      string
+			windows     string
+			sinks       string
+			createdAt   string
+			lastCheckAt sql.NullString
 		)
-		if err := rows.Scan(&name, &w.Kind, &target, &windows, &w.MinSeverity, &sinks, &w.IntervalSecs, &createdAt); err != nil {
+		if err := rows.Scan(&name, &w.Kind, &target, &windows, &w.MinSeverity, &sinks, &w.IntervalSecs, &createdAt, &lastCheckAt); err != nil {
 			return nil, fmt.Errorf("store: vigilancia ilegible: %w", err)
 		}
-		if err := decodeWatchFields(&w, target, windows, sinks, createdAt, name); err != nil {
+		if err := decodeWatchFields(&w, target, windows, sinks, createdAt, lastCheckAt, name); err != nil {
 			return nil, err
 		}
 		w.Name = name
@@ -523,10 +564,10 @@ func (s *Store) DeleteWatch(name string) error {
 	return nil
 }
 
-// decodeWatchFields unmarshals the JSON columns and the stored timestamp of
-// one watches row into w, wrapping every failure with the watch name so the
-// error says which row is unreadable.
-func decodeWatchFields(w *Watch, target, windows, sinks, createdAt, name string) error {
+// decodeWatchFields unmarshals the JSON columns and the stored timestamps
+// of one watches row into w, wrapping every failure with the watch name so
+// the error says which row is unreadable.
+func decodeWatchFields(w *Watch, target, windows, sinks, createdAt string, lastCheckAt sql.NullString, name string) error {
 	if err := json.Unmarshal([]byte(target), &w.Target); err != nil {
 		return fmt.Errorf("store: la vigilancia %q tiene un objetivo ilegible: %w", name, err)
 	}
@@ -541,6 +582,13 @@ func decodeWatchFields(w *Watch, target, windows, sinks, createdAt, name string)
 		return fmt.Errorf("store: la vigilancia %q tiene una fecha de creación ilegible: %w", name, err)
 	}
 	w.CreatedAt = created
+	if lastCheckAt.Valid {
+		parsed, err := parseStoredTime(lastCheckAt.String)
+		if err != nil {
+			return fmt.Errorf("store: last_check_at ilegible en %q: %w", name, err)
+		}
+		w.LastCheckAt = parsed
+	}
 	return nil
 }
 

@@ -37,6 +37,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newRouteCommand())
 	root.AddCommand(newFeedsCommand())
 	root.AddCommand(newDoctorCommand())
+	root.AddCommand(newWatchCommand())
 	return root
 }
 
