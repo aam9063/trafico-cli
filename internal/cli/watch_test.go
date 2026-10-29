@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aam9063/trafico-cli/internal/errs"
+	"github.com/aam9063/trafico-cli/internal/service"
 	"github.com/aam9063/trafico-cli/internal/store"
 )
 
@@ -680,4 +682,278 @@ func TestWatchRunDeliversExactlyOneEvent(t *testing.T) {
 	if !strings.HasSuffix(message, "Fuente: DGT (CC BY)") {
 		t.Errorf("notification %q lacks the attribution line (P-05)", message)
 	}
+}
+
+// fakeServiceRunner records every scheduler command the service commands run
+// and can be told to fail, so no test ever invokes a real systemctl or
+// launchctl.
+type fakeServiceRunner struct {
+	calls []string
+	fail  error
+}
+
+func (r *fakeServiceRunner) Run(name string, args ...string) error {
+	call := name
+	for _, arg := range args {
+		call += " " + arg
+	}
+	r.calls = append(r.calls, call)
+	return r.fail
+}
+
+// setServiceContext replaces the injectable service context of the CLI with
+// one rooted at a temp home and driven by the given fake runner, so the
+// command tests never touch the real scheduler or the user's home.
+func setServiceContext(t *testing.T, runner *fakeServiceRunner) string {
+	t.Helper()
+	home := t.TempDir()
+	restore := serviceContext
+	serviceContext = func() (service.Env, service.Platform, error) {
+		return service.Env{
+			HomeDir: home,
+			BinPath: filepath.Join(home, "bin", "trafico"),
+			Runner:  runner,
+		}, service.PlatformLinux, nil
+	}
+	t.Cleanup(func() { serviceContext = restore })
+	return home
+}
+
+// TestWatchServiceInstallStatusUninstall walks the whole lifecycle of the
+// scheduler integration through the CLI: install writes the units and
+// enables the timer, status reads the state back, uninstall removes the
+// files and disables the timer, and every step exits 0 with one envelope.
+func TestWatchServiceInstallStatusUninstall(t *testing.T) {
+	setCLIEnv(t)
+	runner := &fakeServiceRunner{}
+	home := setServiceContext(t, runner)
+
+	code, stdout, stderr := runCLI(t, "watch", "service", "install")
+	if code != errs.ExitSuccess {
+		t.Fatalf("watch service install exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+	doc := decodeJSON(t, stdout)
+	svc, _ := doc["service"].(map[string]any)
+	if svc == nil {
+		t.Fatalf("install envelope carries no service object: %v", doc)
+	}
+	if svc["platform"] != "linux" || svc["scheduler"] != "systemd" {
+		t.Errorf("install platform/scheduler = %v/%v, want linux/systemd", svc["platform"], svc["scheduler"])
+	}
+	if svc["installed"] != true {
+		t.Errorf("install installed = %v, want true", svc["installed"])
+	}
+	files, _ := svc["files"].([]any)
+	if len(files) != 2 {
+		t.Fatalf("install files = %v, want the two unit files", svc["files"])
+	}
+	for _, f := range files {
+		if _, err := os.Stat(f.(string)); err != nil {
+			t.Errorf("unit file %v was not written: %v", f, err)
+		}
+	}
+	if !runnerHas(runner, "systemctl --user daemon-reload") || !runnerHas(runner, "systemctl --user enable --now trafico-watch.timer") {
+		t.Errorf("install ran commands %v, want daemon-reload and enable --now", runner.calls)
+	}
+
+	// The default interval of the generated timer is 5 minutes (S6).
+	timerBytes, err := os.ReadFile(filepath.Join(home, ".config", "systemd", "user", "trafico-watch.timer"))
+	if err != nil {
+		t.Fatalf("reading the generated timer: %v", err)
+	}
+	if !strings.Contains(string(timerBytes), "OnUnitActiveSec=5m") {
+		t.Errorf("generated timer does not carry the default 5m interval:\n%s", timerBytes)
+	}
+
+	code, stdout, stderr = runCLI(t, "watch", "service", "status")
+	if code != errs.ExitSuccess {
+		t.Fatalf("watch service status exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+	doc = decodeJSON(t, stdout)
+	svc = doc["service"].(map[string]any)
+	if svc["installed"] != true || svc["active"] != true {
+		t.Errorf("status installed/active = %v/%v, want true/true", svc["installed"], svc["active"])
+	}
+
+	code, stdout, stderr = runCLI(t, "watch", "service", "uninstall")
+	if code != errs.ExitSuccess {
+		t.Fatalf("watch service uninstall exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+	doc = decodeJSON(t, stdout)
+	svc = doc["service"].(map[string]any)
+	if svc["installed"] != false {
+		t.Errorf("uninstall installed = %v, want false", svc["installed"])
+	}
+	removed, _ := svc["files"].([]any)
+	if len(removed) != 2 {
+		t.Errorf("uninstall removed files = %v, want the two unit files", svc["files"])
+	}
+	for _, f := range removed {
+		if _, err := os.Stat(f.(string)); !os.IsNotExist(err) {
+			t.Errorf("unit file %v still exists after uninstall", f)
+		}
+	}
+	if !runnerHas(runner, "systemctl --user disable --now trafico-watch.timer") {
+		t.Errorf("uninstall ran commands %v, want the disable of the timer", runner.calls)
+	}
+
+	code, stdout, _ = runCLI(t, "watch", "service", "status")
+	if code != errs.ExitSuccess {
+		t.Fatalf("watch service status (after uninstall) exit code = %d, want 0", code)
+	}
+	doc = decodeJSON(t, stdout)
+	svc = doc["service"].(map[string]any)
+	if svc["installed"] != false || svc["active"] != false {
+		t.Errorf("status after uninstall installed/active = %v/%v, want false/false", svc["installed"], svc["active"])
+	}
+}
+
+// TestWatchServiceStatusNotInstalledExitsZero pins the not-installed report:
+// exit 0 with an installed=false envelope that says "no instalado", never an
+// error envelope.
+func TestWatchServiceStatusNotInstalledExitsZero(t *testing.T) {
+	setCLIEnv(t)
+	runner := &fakeServiceRunner{}
+	setServiceContext(t, runner)
+
+	code, stdout, stderr := runCLI(t, "watch", "service", "status")
+	if code != errs.ExitSuccess {
+		t.Fatalf("watch service status (not installed) exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr must stay empty, got %q", stderr.String())
+	}
+	doc := decodeJSON(t, stdout)
+	svc, _ := doc["service"].(map[string]any)
+	if svc == nil {
+		t.Fatalf("status envelope carries no service object: %v", doc)
+	}
+	if svc["installed"] != false || svc["active"] != false {
+		t.Errorf("status installed/active = %v/%v, want false/false", svc["installed"], svc["active"])
+	}
+	if message, _ := svc["message"].(string); !strings.Contains(message, "no instalado") {
+		t.Errorf("status message = %q, want it to say no instalado", message)
+	}
+	if files, _ := svc["files"].([]any); len(files) != 0 {
+		t.Errorf("status files = %v, want none", files)
+	}
+	if len(runner.calls) != 0 {
+		t.Errorf("status of an empty home ran commands %v, want none", runner.calls)
+	}
+}
+
+// TestWatchServiceRejectsInvalidInterval pins exit 2 with a usage envelope
+// for an unparseable interval and one below the two-minute minimum (S6),
+// without writing anything.
+func TestWatchServiceRejectsInvalidInterval(t *testing.T) {
+	setCLIEnv(t)
+	runner := &fakeServiceRunner{}
+	home := setServiceContext(t, runner)
+
+	for _, interval := range []string{"pronto", "1m"} {
+		code, stdout, stderr := runCLI(t, "watch", "service", "install", "--interval", interval)
+		if code != errs.ExitUsage {
+			t.Fatalf("install --interval %s exit code = %d, want 2 (usage)", interval, code)
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("stdout must stay empty, got %q", stdout.String())
+		}
+		expectEnvelope(t, stderr, "usage")
+	}
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		t.Fatalf("reading the home directory: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("a rejected install wrote %v into the home", entries)
+	}
+	if len(runner.calls) != 0 {
+		t.Errorf("a rejected install ran commands %v, want none", runner.calls)
+	}
+}
+
+// TestWatchServiceUnknownSubcommand pins exit 2 for an unknown subcommand of
+// the service group instead of a silent help print (exit 0).
+func TestWatchServiceUnknownSubcommand(t *testing.T) {
+	setCLIEnv(t)
+	runner := &fakeServiceRunner{}
+	setServiceContext(t, runner)
+
+	code, stdout, stderr := runCLI(t, "watch", "service", "bogus")
+	if code != errs.ExitUsage {
+		t.Fatalf("watch service bogus exit code = %d, want 2 (usage)", code)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout must stay empty, got %q", stdout.String())
+	}
+	expectEnvelope(t, stderr, "usage")
+}
+
+// TestWatchServiceWindowsUnsupported pins that on Windows every service
+// subcommand fails with the clear usage envelope instead of pretending, and
+// writes nothing anywhere.
+func TestWatchServiceWindowsUnsupported(t *testing.T) {
+	setCLIEnv(t)
+	home := t.TempDir()
+	restore := serviceContext
+	serviceContext = func() (service.Env, service.Platform, error) {
+		return service.Env{
+			HomeDir: home,
+			BinPath: filepath.Join(home, "bin", "trafico.exe"),
+			Runner:  &fakeServiceRunner{},
+		}, service.PlatformWindows, nil
+	}
+	t.Cleanup(func() { serviceContext = restore })
+
+	for _, args := range [][]string{
+		{"watch", "service", "install"},
+		{"watch", "service", "uninstall"},
+		{"watch", "service", "status"},
+	} {
+		code, stdout, stderr := runCLI(t, args...)
+		if code != errs.ExitUsage {
+			t.Fatalf("%v exit code = %d, want 2 (usage)", args, code)
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("%v: stdout must stay empty, got %q", args, stdout.String())
+		}
+		envelope := expectEnvelope(t, stderr, "usage")
+		if message, _ := envelope["message"].(string); !strings.Contains(message, "no está soportado") {
+			t.Errorf("%v: message = %q, want it to say the platform is not supported", args, message)
+		}
+	}
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		t.Fatalf("reading the home directory: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("a rejected windows install wrote %v into the home", entries)
+	}
+}
+
+// TestWatchServiceRunnerFailureSurfaces pins that a scheduler command that
+// fails surfaces as an internal error envelope (exit 1), never swallowed.
+func TestWatchServiceRunnerFailureSurfaces(t *testing.T) {
+	setCLIEnv(t)
+	runner := &fakeServiceRunner{fail: errors.New("boom")}
+	setServiceContext(t, runner)
+
+	code, stdout, stderr := runCLI(t, "watch", "service", "install")
+	if code != errs.ExitInternal {
+		t.Fatalf("install with a failing runner exit code = %d, want 1 (internal)", code)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout must stay empty, got %q", stdout.String())
+	}
+	expectInternalEnvelope(t, stderr)
+}
+
+// runnerHas reports whether the fake runner executed the exact command.
+func runnerHas(runner *fakeServiceRunner, call string) bool {
+	for _, c := range runner.calls {
+		if c == call {
+			return true
+		}
+	}
+	return false
 }
