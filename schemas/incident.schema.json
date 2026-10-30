@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aam9063/trafico-cli/schemas/incident.schema.json",
+  "title": "Incident",
+  "description": "One normalized traffic incident of the trafico-cli JSON contract (schema_version 1, docs/ARRANQUE.md section 4.1 as corrected by docs/feeds.md sections 4.3-4.7). Every field is always present; values the feed does not carry serialise as null (principle P-04): nothing is invented.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "situation_id",
+    "source",
+    "source_version",
+    "type",
+    "subtype_raw",
+    "severity",
+    "status",
+    "road",
+    "direction",
+    "direction_bearing",
+    "pk",
+    "location",
+    "lanes_affected",
+    "start_time",
+    "end_time",
+    "raw_description",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version of the output contract (P-09). Schema changes land in a dedicated PR with a schema_version bump."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^dgt:.+$",
+      "description": "Stable identifier: the prefix \"dgt:\" followed by the DATEX II situation record id (sit:situationRecord/@id), the unit that carries location and cause (docs/feeds.md section 4.3)."
+    },
+    "situation_id": {
+      "type": "string",
+      "description": "Identifier of the parent DATEX II situation (sit:situation/@id). One situation can hold several records, so the record id alone is not the whole story."
+    },
+    "source": {
+      "type": "string",
+      "const": "dgt",
+      "description": "Data source. Always \"dgt\": the DGT Punto de Acceso Nacional is the only incident feed in v1."
+    },
+    "source_version": {
+      "type": "string",
+      "description": "DATEX II model base version of the source feed (\"3\" for the v3.7 incident payload, docs/feeds.md section 1.1)."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["accident", "congestion", "roadworks", "closure", "obstruction", "weather", "restriction", "event", "other"],
+      "description": "Normalised incident type resolved from the DATEX II cause through internal/datex2/mapping.yaml. Unmapped future causes degrade to \"other\"."
+    },
+    "subtype_raw": {
+      "type": "string",
+      "description": "Original DATEX II cause value, never normalised (P-04): the value of the sit:detailedCauseType child when the feed publishes one, otherwise the sit:causeType. This is the preservation point for the source wording the feed lacks as free text."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "unknown"],
+      "description": "Severity published by the DGT, mapped to low|medium|high. The value \"unknown\" means the DGT publishes none for the record (about 87% of the feed, docs/feeds.md section 4.5): it is not a low severity and it is never inferred from the cause."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "planned", "ended"],
+      "description": "Computed from the validity window at query time, never from the feed's validityStatus string: \"planned\" when the start is in the future, \"ended\" when the end is in the past, otherwise \"active\"."
+    },
+    "road": {
+      "type": "string",
+      "description": "Road name normalised by internal/road: trimmed, whitespace collapsed, uppercased, and exactly one hyphen inserted only when the name is a letter prefix followed by a number (a7, \"A 7\" and a-7 all become A-7). Names that already carry a hyphen keep their structure and suffixes (N-332A, A-356R1, CG-1.5); free-text names are preserved apart from case and whitespace, with no invented hyphen (GC-1 AM, CHG-1, CV PRIVADO IBERDROLA, AVDA. ANDALUCÍA)."
+    },
+    "direction": {
+      "type": ["string", "null"],
+      "enum": ["positive", "negative", "both", null],
+      "description": "Direction of travel from lse:tpegDirectionRoad (docs/feeds.md section 4.4). Null when the feed omits it. The compass bearing is a separate field: direction_bearing."
+    },
+    "direction_bearing": {
+      "type": ["string", "null"],
+      "description": "Compass bearing from loc:tpegDirection (westBound, northEastBound, ...), exactly as the feed publishes it, including DATEX II's \"unknown\". It is a geographic heading, NOT a destination label: the incident feed carries no destination text (docs/feeds.md sections 4.3 and 4.4). Null when absent."
+    },
+    "pk": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {
+          "type": ["number", "null"],
+          "description": "Kilometre point where the affected stretch begins; null for a single-point location."
+        },
+        "to": {
+          "type": ["number", "null"],
+          "description": "Kilometre point where the affected stretch ends; null for a single-point location."
+        }
+      },
+      "description": "Kilometre-point interval in kilometres with decimals. Either bound is null when the record is a single point; pk itself is null when the record carries no kilometre point at all."
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end", "province", "municipality"],
+      "properties": {
+        "start": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["lat", "lon"],
+          "properties": {
+            "lat": { "type": "number", "description": "WGS84 latitude." },
+            "lon": { "type": "number", "description": "WGS84 longitude." }
+          },
+          "description": "Coordinates of the first affected point; null when absent."
+        },
+        "end": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["lat", "lon"],
+          "properties": {
+            "lat": { "type": "number", "description": "WGS84 latitude." },
+            "lon": { "type": "number", "description": "WGS84 longitude." }
+          },
+          "description": "Coordinates of the last affected point; null for a single-point location."
+        },
+        "province": {
+          "type": "string",
+          "description": "Province exactly as published (P-04). The feed mixes case and bilingual pairs such as \"Lugo\", \"LUGO\" and \"Alacant/Alicante\" (docs/feeds.md section 4.6); filters fold case and accents and match either half of a pair."
+        },
+        "municipality": {
+          "type": "string",
+          "description": "Municipality exactly as published (P-04)."
+        }
+      },
+      "description": "Geographic context. \"end\" is null for point locations. There is no geocoding in v1: province and municipality only appear when the feed carries them."
+    },
+    "lanes_affected": {
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "description": "Raw loc:laneUsage values of the affected lanes (rightLane, leftLane, allLanesCompleteCarriageway, middleLane, tidalFlowLane, centralReservation, turningLane, carPoolLane, _extended, ...), kept verbatim: the DATEX II list is open, so unknown values are preserved, not filtered. This is a deviation from the section 4.1 sketch (\"1 de 3\"): the feed has no lane total, only which lanes are affected (docs/feeds.md section 4.3). Null when the record lists no lanes."
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Validity start (com:overallStartTime) in RFC3339 UTC. Present in 100% of records."
+    },
+    "end_time": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Planned validity end (com:overallEndTime) in RFC3339 UTC; null when the feed carries none (about 35% of records)."
+    },
+    "raw_description": {
+      "type": ["string", "null"],
+      "description": "Free text published by the DGT. Always null today: the incident feed carries no free-text field (docs/feeds.md section 4.3); the original cause wording is preserved in subtype_raw. The field stays in the contract so the DGT adding one is not a breaking change."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last version time of the record (sit:situationRecordVersionTime) in RFC3339 UTC."
+    }
+  }
+}

@@ -43,6 +43,11 @@ Con estos mismos datos hay apps web (HayTrafico, trafico.live), capas JSON para 
 
 ## 2. La fuente de datos (confirmado)
 
+> **Actualizado el 2026-10-28 (SPIKE-01).** Las URLs de todos los datasets, sus tamaños, cabeceras
+> y la estructura real de cada registro están medidos en `docs/feeds.md`, que manda sobre esta
+> sección. En resumen: 7 feeds confirmados, todos CC BY salvo SCT, sin `ETag` ni `Last-Modified`,
+> y **tres dialectos DATEX II distintos** (v3.7, v3 y v1.0) que obligan a tres modelos de parseo.
+
 | Dato | Estado |
 |---|---|
 | Publicador | DGT, Punto de Acceso Nacional de tráfico (`nap.dgt.es`) |
@@ -136,6 +141,11 @@ Reglas:
 
 ### 4.2 Panel, radar y tramo
 
+> **Actualizado el 2026-10-28 (SPIKE-01).** Varios campos de esta lista no existen en el feed.
+> Ver `docs/feeds.md` §4.3, §5, §6, §7 y §8: no hay `speed_limit`, no hay "1 de 3" carriles, no
+> hay etiqueta de destino en incidencias y el PK de radares y tramos viene en metros
+> (`referencePointDistance`) o codificado en el id del tramo.
+
 - **Panel:** `id`, `road`, `pk`, `direction`, `location`, `message` (texto mostrado ahora, o `null` si apagado), `message_updated_at`.
 - **Radar fijo:** `id`, `road`, `pk`, `direction`, `location`, `type` si viene, `speed_limit` si viene.
 - **Tramo** (INVIVE, animales): `id`, `kind`, `road`, `pk.from`, `pk.to`, `location`.
@@ -160,7 +170,7 @@ Los campos exactos se confirman en SPIKE-01. Si un campo no existe en el feed, n
 | `trafico radars [filtros]` | Radares fijos |
 | `trafico sections --kind invive\|animals [filtros]` | Tramos especiales |
 | `trafico watch add route\|road\|near ...` / `list` / `remove` / `check` / `run` | Vigilancias |
-| `trafico watch service install / uninstall / status` | Programar `watch check` con systemd o launchd |
+| `trafico watch service install / uninstall / status` | Programar `watch run` con systemd o launchd |
 | `trafico sink list / test` | Destinos de avisos (ntfy, webhook, exec) |
 | `trafico feeds list` / `status` | URLs, última descarga, fecha de publicación, tamaño, estado |
 | `trafico doctor` | Config, red, feeds, programador |
@@ -201,14 +211,18 @@ Los campos exactos se confirman en SPIKE-01. Si un campo no existe en el feed, n
     "from_cache": true,
     "total": 2,
     "unlocated": 0,
-    "coverage_note": "Sin datos de Cataluña ni País Vasco"
+    "coverage_note": "Cobertura de la DGT: no incluye las incidencias gestionadas por la SCT (Cataluña) ni por el Gobierno Vasco"
   },
   "incidents": [ { "...": "modelo 4.1" } ],
   "attribution": { "source": "DGT, Punto de Acceso Nacional", "license": "CC BY", "url": "https://nap.dgt.es/" }
 }
 ```
 
-`coverage_note` aparece cuando el filtro toca provincias de Cataluña o País Vasco, para que el agente no diga "no hay incidencias" donde simplemente no hay datos.
+`coverage_note` nombra **al gestor, no a la provincia**, porque el feed sí trae incidencias en
+Barcelona, Girona y Tarragona: son carreteras estatales dentro de Cataluña. Lo que falta son las que
+gestiona la SCT. Un agente que diga "no hay datos de Cataluña" estaría mintiendo sobre la AP-7 en
+Barcelona. Aparece salvo que el filtro restrinja a provincias donde no hay un gestor autonómico
+distinto del Estado.
 
 ### 5.4 Rutas
 
@@ -240,11 +254,12 @@ trafico watch add road AP-7 --pk 600-700 --type closure,accident --notify phone
 trafico watch service install --interval 5m
 ```
 
-- **Línea base silenciosa** al crear (salvo `--emit-initial`).
+- **Línea base silenciosa** al crear (salvo `--emit-initial`, que anuncia con `incident.new` en la primera comprobación lo que ya estaba pasando; la elección se guarda con la vigilancia).
 - **Ventanas horarias** (`--window`, mismo formato que el `--when` de booksy-cli, días en español o inglés): fuera de la ventana no se comprueba ni se avisa. Hora de Europe/Madrid.
 - Eventos: `incident.new`, `incident.updated` (cambia severidad, carriles o fin previsto), `incident.cleared` (desaparece en dos comprobaciones seguidas).
 - Intervalo mínimo: 2 minutos. Por defecto: 5.
-- Destinos: `ntfy`, `webhook` (plantillas `discord`, `slack`, `telegram`) y `exec`. **El aviso nunca incluye el nombre ni las coordenadas de tu ruta**: solo carretera, PK, tipo, severidad y la atribución.
+- Salida de `watch run`: una entrada por vigilancia con `baseline` (primera comprobación), `skipped` (fuera de ventana), `skipped_interval` (el intervalo desde la última comprobación real aún no ha pasado) y `events` con sus tipos. La última comprobación real queda registrada en la base de datos (`last_check_at`, §7) y es la que sostiene el intervalo, sea cual sea la frecuencia del planificador.
+- Destinos: `ntfy`, `webhook` (plantillas `discord`, `slack` y `telegram`; la plantilla `telegram` necesita `chat_id` en `[sinks.<nombre>]`) y `exec`. **El aviso nunca incluye el nombre ni las coordenadas de tu ruta**: solo carretera, PK, tipo, severidad y la atribución.
 
 ### 5.6 Frescura
 
@@ -297,7 +312,7 @@ description: Consultar incidencias, obras, paneles y radares de la DGT por carre
 
 ## Reglas
 - Usa la salida JSON. Mira siempre meta.published_at y meta.stale antes de decir "ahora".
-- Si meta.coverage_note aparece, dilo: no hay datos de Cataluña ni País Vasco.
+- Si meta.coverage_note aparece, dilo: la cobertura no incluye lo que gestionan la SCT (Cataluña) ni el Gobierno Vasco. No digas "no hay datos de Cataluña": puede haber incidencias de la DGT en Barcelona, Girona o Tarragona.
 - Cita la fuente: "Datos de la DGT".
 - No inventes tiempos de viaje ni retenciones: solo lo que viene en el feed.
 - Código 7: la DGT ha cambiado algo; díselo al usuario y no reintentes en bucle.
@@ -317,6 +332,8 @@ description: Consultar incidencias, obras, paneles y radares de la DGT por carre
 |---|---|---|
 | Config (feeds, lugares, rutas, sinks) | `$XDG_CONFIG_HOME/trafico-cli/config.toml` | `0600` |
 | Base de datos (vigilancias, eventos, estado previo) | `$XDG_DATA_HOME/trafico-cli/trafico.db` | `0600` |
+
+El estado de cada vigilancia vive en la base de datos: la línea base de cada incidente, el contador de ausencias, la elección de `--emit-initial` y `last_check_at` (la última comprobación real que sostiene el intervalo mínimo de §5.5).
 | Caché de feeds | `$XDG_CACHE_HOME/trafico-cli/` | `0600` |
 
 ```toml
@@ -342,6 +359,12 @@ max_age = "10m"
 type = "ntfy"
 url = "https://ntfy.sh"
 topic = "elige-un-topic-largo-y-aleatorio"
+
+[sinks.telegram]
+type = "webhook"
+url = "https://api.telegram.org/bot<token-del-bot>/sendMessage"
+template = "telegram"
+chat_id = "123456789"
 ```
 
 Las URLs por defecto van compiladas en el binario y se pueden sobrescribir en config, para que un cambio de la DGT se arregle sin esperar a una release.
@@ -518,7 +541,11 @@ Principios de la sección 3 que aplican.
 
 ### 10.6 Entrega
 
-Ramas `tr/<id>-descripcion`, un PR por tarea. Merge siempre humano (H-03).
+Ramas `tr/<id>-descripcion`, un PR por tarea.
+
+> **Corregido el 2026-10-28 (ADR 0002).** El agente commitea, pushea, abre el PR y lo mergea
+> contra `dev` con el CI en verde. `main` queda reservada a releases y solo la mueve una persona.
+> Un PR por tarea, historia lineal en `dev` (merge con rebase) y la rama se borra al mergear.
 
 ---
 
@@ -588,7 +615,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: ./scripts/require_review.sh "${{ github.event.pull_request.title }}"
+      - run: ./scripts/require_review.sh "$PR_TITLE"
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
   live:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest

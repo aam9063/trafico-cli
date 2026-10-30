@@ -1,0 +1,153 @@
+# Mapping from DGT DATEX II v3.7 situation records to the normalised values
+# used by trafico-cli.
+#
+# Built from the values actually present in the live feed on 2026-10-28
+# (SPIKE-01) and the DATEX II v3 cause taxonomy published in the DGT RTTI
+# profile. Every value on the left of the tables below was observed in the
+# snapshots under testdata/feeds/situations/; nothing here is guessed.
+#
+# Resolution order for `type`:
+#   1. detailed_cause_types: the child of <sit:detailedCauseType>, keyed by its
+#      element name and value. Most specific, wins first.
+#   2. cause_types: <sit:causeType>.
+#   3. default_type.
+#
+# Whatever matches, `subtype_raw` always keeps the original DATEX II value
+# (P-04): the mapping can be wrong and the source text never gets lost.
+schema_version: 1
+profile: "DGT (Spain) Profile RTTI SituationPublication 3.7_1.0"
+captured_at: "2026-10-28"
+
+default_type: other
+
+# Normalised incident types. Lowercased, stable, part of the JSON contract.
+types:
+  - accident
+  - congestion
+  - roadworks
+  - closure
+  - obstruction
+  - weather
+  - restriction
+  - event
+  - other
+
+# <sit:causeType> -> normalised type. Used when no detailed cause matched.
+cause_types:
+  accident: accident
+  roadMaintenance: roadworks
+  abnormalTraffic: congestion
+  poorEnvironment: weather
+  environmentalObstruction: weather
+  obstruction: obstruction
+  vehicleObstruction: obstruction
+  infrastructureDamageObstruction: obstruction
+  disturbance: event
+  roadOrCarriagewayOrLaneManagement: restriction
+  speedManagement: restriction
+  nonWeatherRelatedRoadConditions: other
+  generalInstructionOrMessageToRoadUsers: other
+  genericSituationRecord: other
+
+# <sit:detailedCauseType> children -> normalised type.
+# Keyed by the DATEX II element name; the value is the element text.
+detailed_cause_types:
+  accidentType:
+    accident: accident
+
+  roadMaintenanceType:
+    roadworks: roadworks
+
+  roadOrCarriagewayOrLaneManagementType:
+    # A full stop of the carriageway is a closure; anything that keeps at
+    # least one lane open is a restriction.
+    carriagewayClosures: closure
+    roadClosed: closure
+    laneClosures: closure
+    intermittentShortTermClosures: closure
+    singleAlternateLineTraffic: restriction
+    narrowLanes: restriction
+    lanesDeviated: restriction
+    newRoadworksLayout: restriction
+    useOfSpecifiedLanesOrCarriagewaysAllowed: restriction
+    doNotUseSpecifiedLanesOrCarriageways: restriction
+    weightRestrictionInOperation: restriction
+    other: restriction
+
+  speedManagementType:
+    speedRestrictionInOperation: restriction
+
+  vehicleObstructionType:
+    vehicleStuck: obstruction
+    vehicleOnFire: obstruction
+    vehicleWithOverwideLoad: obstruction
+    abnormalLoad: obstruction
+
+  obstructionType:
+    obstructionOnTheRoad: obstruction
+    objectOnTheRoad: obstruction
+    spillageOnTheRoad: obstruction
+    peopleOnTheRoadway: obstruction
+
+  infrastructureDamageType:
+    damagedRoadSurface: obstruction
+
+  environmentalObstructionType:
+    rockfalls: weather
+    flooding: weather
+    avalanches: weather
+
+  abnormalTrafficType:
+    slowTraffic: congestion
+    heavyTraffic: congestion
+    queuingTraffic: congestion
+    stationaryTraffic: congestion
+
+  poorEnvironmentType:
+    fog: weather
+    visibilityReduced: weather
+    heavyRain: weather
+    snowFall: weather
+    strongWinds: weather
+
+  nonWeatherRelatedRoadConditionType:
+    roadSurfaceInPoorCondition: other
+
+  disturbanceActivityType:
+    demonstration: event
+
+  generalInstructionToRoadUsersType:
+    driveCarefully: other
+
+# <sit:severity> and <sit:overallSeverity> -> normalised severity.
+# Both are optional in the feed. When neither is present the incident is
+# `unknown`; it is never inferred from the incident type.
+severity:
+  low: low
+  medium: medium
+  high: high
+  highest: high
+default_severity: unknown
+
+# `status` is NOT read from the feed: it is computed from the validity window
+# so that a stale cache cannot label a finished incident as active.
+#   overallStartTime > now                    -> planned
+#   overallEndTime present and < now          -> ended
+#   otherwise                                 -> active
+status_from_validity: true
+
+# Location encoding actually used by the feed (SPIKE-01):
+#   loc:SingleRoadLinearLocation -> segment with from/to, each carrying
+#                                   lse:kilometerPoint, lse:province,
+#                                   lse:municipality and pointCoordinates
+#   loc:PointLocation            -> single point, same extension
+# Both are always present with province, municipality and kilometre point;
+# coordinates are always present too.
+location_encodings:
+  - SingleRoadLinearLocation
+  - PointLocation
+
+# Direction comes from <lse:tpegDirectionRoad> (positive|negative|both).
+# <loc:tpegDirection> is a compass bearing (westBound, northEastBound, ...)
+# and is exposed only as `direction_bearing`, never as the road direction.
+direction_field: lse:tpegDirectionRoad
