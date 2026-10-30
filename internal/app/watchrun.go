@@ -670,26 +670,18 @@ func (s *scratchStore) cleanup() {
 // The single-instance lock of the read-decide-write cycle (WATCH-01): two
 // processes landing on the same snapshot (`watch run` from a scheduler and a
 // manual `watch check`) would emit duplicated notifications and race the
-// state replacement. The lock is one O_CREATE|O_EXCL file in the data
+// state replacement. The lock is an OS advisory lock on one file in the data
 // directory, next to trafico.db:
 //
-//   - Acquisition is atomic (O_EXCL); the winner writes its pid for
-//     diagnostics.
-//   - Releasing removes the file only if it still carries our own token: a
-//     cycle paused past the staleness timeout may come back to a lock
-//     another process legitimately took over, and it must not sabotage it.
-//   - A lock older than the staleness timeout is treated as the remains of
-//     a crashed process and taken over. The takeover runs under a second
-//     O_EXCL gate file (watch.lock.steal) so two processes racing on the
-//     same stale lock can never both remove-and-replace it: the gate holder
-//     re-verifies the file (same token, same device/inode, still stale)
-//     while holding the gate, and only then removes it. The gate is held
-//     for microseconds, so its own much shorter staleness timeout can never
-//     judge a live gate holder as dead.
-//   - A stale lock that cannot be removed (foreign permissions, a file
-//     another process keeps open) fails the acquisition with an error naming
-//     the removal failure, instead of spinning on it forever.
-//   - A second process facing a live lock fails cleanly with an internal
+//   - Acquisition is a non-blocking exclusive advisory lock (flock on POSIX,
+//     LockFileEx on Windows): the loser fails immediately instead of
+//     queueing behind a live cycle.
+//   - The KERNEL releases the lock when the holder dies (process exit or
+//     crash), so there is no staleness heuristic, no takeover, no token and
+//     no gate file: a live holder is contention, a dead one leaves no trace
+//     in the lock state. The bare lock file may survive a crash; only the
+//     advisory lock matters, and it is gone.
+//   - A second process facing a held lock fails cleanly with an internal
 //     error that says what happened; it never corrupts state and never
 //     duplicates a notification.
 //
@@ -697,200 +689,36 @@ func (s *scratchStore) cleanup() {
 // check-and-deliver cycle of a command is serialised. Without it, a library
 // caller calling RunWatch directly runs unserialised.
 
-// defaultLockStaleAfter is how long a lock file may sit untouched before it
-// is treated as the remains of a crashed process. A cycle takes minutes at
-// most (one feed fetch plus a handful of sink posts), so ten minutes is a
-// generous ceiling that still un-wedges a crashed watcher quickly.
-const defaultLockStaleAfter = 10 * time.Minute
-
 // lockFileName is the lock file, created in the same directory as the
-// database (docs/ARRANQUE.md §7: the data directory).
+// database (docs/ARRANQUE.md §7: the data directory). Only the advisory
+// lock on it matters: the file itself is just the kernel's lock anchor and
+// may survive a crashed holder.
 const lockFileName = "watch.lock"
 
-// lockStealFileName is the takeover gate, created next to the lock: only one
-// process at a time may transition a stale lock (re-verify it and remove it),
-// so two processes racing on the same stale lock cannot both take it over
-// and run concurrently. The gate is held for microseconds (a re-read plus a
-// remove), so defaultGateStaleAfter — much shorter than the lock's own
-// staleness timeout — can safely treat an old gate as the remains of a
-// crashed takeover: no live holder can look that stale.
-const lockStealFileName = "watch.lock.steal"
-
-// defaultGateStaleAfter is how long the takeover gate may sit untouched
-// before it is treated as the remains of a crashed takeover.
-const defaultGateStaleAfter = 10 * time.Second
-
 // WithWatchLock runs fn while holding the single-instance watch lock in the
-// data directory of the database at dataPath. staleAfter <= 0 uses
-// defaultLockStaleAfter.
-func WithWatchLock(dataPath string, staleAfter time.Duration, fn func() error) error {
-	if staleAfter <= 0 {
-		staleAfter = defaultLockStaleAfter
-	}
+// data directory of the database at dataPath.
+//
+// The second parameter is IGNORED: it used to be the staleness timeout of
+// the old mtime-based lock, and the advisory lock needs no staleness
+// heuristic (the kernel drops the lock when the holder dies). It stays in
+// the signature so the CLI call sites do not change.
+func WithWatchLock(dataPath string, _ time.Duration, fn func() error) error {
 	dir := filepath.Dir(dataPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return errs.NewInternal(fmt.Sprintf("no se pudo crear el directorio de datos %s: %v", dir, err))
 	}
 	lockPath := filepath.Join(dir, lockFileName)
-	token := fmt.Sprintf("%d\n", os.Getpid())
-	for {
-		file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			_, _ = fmt.Fprint(file, token)
-			file.Close()
-			err = fn()
-			releaseOwnedLock(lockPath, token)
-			return err
-		}
-		if !os.IsExist(err) {
-			return errs.NewInternal(fmt.Sprintf("no se pudo crear el bloqueo %s: %v", lockPath, err))
-		}
-		// The lock is held: is it a live process, a crashed one, or a file
-		// that changed under us since the last look?
-		retry, err := examineHeldLock(dir, lockPath, staleAfter)
-		if err != nil {
-			return err
-		}
-		if !retry {
-			return errs.NewInternal(fmt.Sprintf(
-				"otro proceso de trafico está ejecutando una vigilancia: espera a que termine; si el bloqueo %s ha quedado de una ejecución interrumpida, elimínalo y reintenta",
-				lockPath))
-		}
-	}
-}
-
-// examineHeldLock inspects the held lock file after an exclusive create
-// failed. It reports whether the caller should retry the acquisition (the
-// file vanished, or it proved to be a stale lock that was taken over) or
-// fail cleanly (the lock is live), and it fails with an error when the lock
-// must be taken over but cannot be removed.
-func examineHeldLock(dir, lockPath string, staleAfter time.Duration) (retry bool, err error) {
-	token, info, err := readLockFile(lockPath)
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return true, nil // the holder released it between create and now
-		}
-		return false, errs.NewInternal(fmt.Sprintf("no se pudo examinar el bloqueo %s: %v", lockPath, err))
+		return errs.NewInternal(fmt.Sprintf("no se pudo abrir el bloqueo %s: %v", lockPath, err))
 	}
-	if time.Since(info.ModTime()) <= staleAfter {
-		return false, nil // a live lock: the caller fails cleanly
-	}
-	return takeOverStaleLock(dir, lockPath, token, info, staleAfter)
-}
-
-// takeOverStaleLock removes the stale lock whose token and identity the
-// caller examined, under the takeover gate. It reports whether the caller
-// should retry the acquisition (the stale lock was removed, or it changed
-// under us and must be re-evaluated), or fail cleanly (another process is
-// mid-takeover), and it fails with an error when the lock cannot be removed.
-func takeOverStaleLock(dir, lockPath, staleToken string, staleInfo os.FileInfo, staleAfter time.Duration) (bool, error) {
-	gatePath := filepath.Join(dir, lockStealFileName)
-	gateHeld := false
-	defer func() {
-		if gateHeld {
-			os.Remove(gatePath)
-		}
-	}()
-	for {
-		file, err := os.OpenFile(gatePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			_, _ = fmt.Fprintf(file, "%d\n", os.Getpid())
-			file.Close()
-			gateHeld = true
-			break
-		}
-		if !os.IsExist(err) {
-			return false, errs.NewInternal(fmt.Sprintf("no se pudo crear la puerta de toma de control %s: %v", gatePath, err))
-		}
-		gateInfo, statErr := os.Stat(gatePath)
-		if statErr != nil {
-			if os.IsNotExist(statErr) {
-				continue // the gate holder released it; try the create again
-			}
-			return false, errs.NewInternal(fmt.Sprintf("no se pudo examinar la puerta de toma de control %s: %v", gatePath, statErr))
-		}
-		if time.Since(gateInfo.ModTime()) <= defaultGateStaleAfter {
-			return false, nil // another process is mid-takeover: fail cleanly
-		}
-		// An abandoned gate (its holder lives for microseconds, so no live
-		// holder can look this stale): remove it and take the gate over.
-		if err := os.Remove(gatePath); err != nil {
-			return false, errs.NewInternal(fmt.Sprintf("no se pudo eliminar la puerta de toma de control obsoleta %s: %v", gatePath, err))
-		}
-	}
-	// Gate held: nobody else may remove or replace the lock now. Re-verify
-	// that it is still the same stale file we examined, so we can never
-	// delete a lock another process has already replaced with its own live
-	// one.
-	token, info, err := readLockFile(lockPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return true, nil // gone: retry the exclusive create
-		}
-		return false, errs.NewInternal(fmt.Sprintf("no se pudo examinar el bloqueo %s: %v", lockPath, err))
-	}
-	if token != staleToken || !os.SameFile(staleInfo, info) || time.Since(info.ModTime()) <= staleAfter {
-		return true, nil // it changed or was refreshed under us: re-evaluate
-	}
-	if err := removeStaleLock(lockPath); err != nil {
-		return false, errs.NewInternal(fmt.Sprintf(
-			"no se pudo eliminar el bloqueo obsoleto %s: %v; si ha quedado de una ejecución interrumpida, elimínalo manualmente y reintenta",
-			lockPath, err))
-	}
-	return true, nil
-}
-
-// removeStaleLock removes the verified stale lock. On Windows the removal
-// fails while any other process holds the file open (a concurrent examiner
-// of the same stale lock), so it retries briefly. The budget is bounded —
-// a genuinely undeletable lock (foreign permissions, a file another process
-// keeps open for good) still fails fast instead of spinning.
-func removeStaleLock(lockPath string) error {
-	const (
-		attempts = 20
-		pause    = 5 * time.Millisecond
-	)
-	var err error
-	for i := 0; i < attempts; i++ {
-		if err = os.Remove(lockPath); err == nil {
-			return nil
-		}
-		if os.IsNotExist(err) {
-			return nil // already gone: the acquisition retry decides
-		}
-		time.Sleep(pause)
-	}
-	return err
-}
-
-// releaseOwnedLock removes the lock file only if it still carries our own
-// token: a cycle paused past the staleness timeout can come back to a lock
-// another process legitimately took over, and removing the file would
-// sabotage the new holder. Anything unexpected (the file gone, unreadable,
-// replaced) is left alone: the worst case is a lock that a later takeover
-// cleans up.
-func releaseOwnedLock(lockPath, token string) {
-	current, _, err := readLockFile(lockPath)
-	if err != nil || current != token {
-		return
-	}
-	os.Remove(lockPath)
-}
-
-// readLockFile opens the lock file, reads the token written inside (the pid
-// of its holder, diagnostics only) and returns it together with the file's
-// identity as seen from the open handle.
-func readLockFile(path string) (string, os.FileInfo, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", nil, err
+	if err := acquireFileLock(file); err != nil {
+		file.Close()
+		return errs.NewInternal(fmt.Sprintf(
+			"otro proceso de trafico está ejecutando una vigilancia: espera a que termine; si el bloqueo %s ha quedado de una ejecución interrumpida, elimínalo y reintenta",
+			lockPath))
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return "", nil, err
-	}
-	buf := make([]byte, 128)
-	n, _ := file.Read(buf)
-	return string(buf[:n]), info, nil
+	defer releaseFileLock(file)
+	return fn()
 }

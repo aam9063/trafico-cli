@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aam9063/trafico-cli/internal/app"
 	"github.com/aam9063/trafico-cli/internal/errs"
 	"github.com/aam9063/trafico-cli/internal/service"
 	"github.com/aam9063/trafico-cli/internal/store"
@@ -663,8 +664,17 @@ func TestWatchRunSkipsWithinInterval(t *testing.T) {
 }
 
 // TestWatchRunLockContention pins the single-instance lock at the command
-// boundary: with a live lock file in the data directory, `watch run` fails
-// cleanly (internal envelope, exit 1) and the stored watches are intact.
+// boundary: with the advisory lock genuinely held by another holder, `watch
+// run` fails cleanly (internal envelope, exit 1) and the stored watches are
+// intact.
+//
+// An earlier version of this test treated a bare watch.lock FILE as
+// contention. The advisory-lock design deliberately stops doing that: the
+// file is only the kernel's lock anchor, so a leftover file from a crashed
+// run must not block the next one — TestWatchRunStaleLockProceeds already
+// covers that path. Real contention is simulated by a goroutine holding
+// app.WithWatchLock (the same lock the command takes) for the duration of
+// the CLI call.
 func TestWatchRunLockContention(t *testing.T) {
 	setCLIEnv(t)
 	srv := newWatchServer(t)
@@ -674,9 +684,24 @@ func TestWatchRunLockContention(t *testing.T) {
 		t.Fatalf("watch add exit code = %d, want 0 (stderr: %q)", code, stderr.String())
 	}
 
-	lockPath := filepath.Join(watchDataDir(t), "watch.lock")
-	if err := os.WriteFile(lockPath, []byte("424242\n"), 0o600); err != nil {
-		t.Fatalf("creating the live lock: %v", err)
+	dataPath := filepath.Join(watchDataDir(t), "trafico.db")
+	holderIn := make(chan struct{})
+	releaseHolder := make(chan struct{})
+	holderDone := make(chan error, 1)
+	go func() {
+		holderDone <- app.WithWatchLock(dataPath, 0, func() error {
+			close(holderIn)
+			<-releaseHolder
+			return nil
+		})
+	}()
+	// Fail rather than hang if the holder never gets in: the contended run
+	// below is only meaningful once the lock is provably taken.
+	select {
+	case <-holderIn:
+	case <-time.After(5 * time.Second):
+		close(releaseHolder)
+		t.Fatal("the lock holder never acquired the lock, the contended run would be meaningless")
 	}
 
 	code, stdout, stderr := runCLI(t, "watch", "run")
@@ -691,10 +716,12 @@ func TestWatchRunLockContention(t *testing.T) {
 		t.Errorf("error.message = %q, want it to explain the contention", msg)
 	}
 
-	// The stored definitions are intact and the command works once the lock
-	// is gone (the contended run must not have wedged anything).
-	if err := os.Remove(lockPath); err != nil {
-		t.Fatalf("removing the live lock: %v", err)
+	// Release the holder: the stored definitions must be intact and the
+	// command must work again (the contended run must not have wedged
+	// anything).
+	close(releaseHolder)
+	if err := <-holderDone; err != nil {
+		t.Fatalf("the lock holder failed: %v", err)
 	}
 	code, stdout, stderr = runCLI(t, "watch", "list")
 	if code != errs.ExitSuccess {

@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -701,27 +699,23 @@ func TestDeliverPendingRetriesAfterSinkFailure(t *testing.T) {
 	}
 }
 
-// TestWithWatchLockStaleTakeoverIsExclusive pins the takeover safety of the
-// stale-lock path: when several processes examine the same stale lock at
-// once, exactly ONE of them may end up running its cycle. The broken
-// take-then-remove interleave (one process removes a lock another process
-// has already replaced with a live one) would run two cycles concurrently,
-// which is what the lock exists to prevent.
+// TestWithWatchLockStaleTakeoverIsExclusive pins the exclusivity guarantee
+// of the single-instance lock: when several processes reach for the lock at
+// once, exactly ONE of them may run its cycle — the rest fail cleanly with
+// the contention error instead of executing the critical section
+// concurrently, which is what the lock exists to prevent.
+//
+// The name is historical: the lock used to be an mtime-based file whose
+// stale remains were taken over. It is now an OS advisory lock, which the
+// kernel releases when the holder dies, so there is no staleness heuristic
+// and no takeover — but the guarantee this test checks is unchanged, and
+// it must hold when every contender starts at the same instant.
 func TestWithWatchLockStaleTakeoverIsExclusive(t *testing.T) {
 	const workers = 16
 	const rounds = 30
 	for round := 0; round < rounds; round++ {
 		dir := t.TempDir()
 		dataPath := filepath.Join(dir, "trafico.db")
-		lockPath := filepath.Join(dir, "watch.lock")
-		// The remains of a crashed process, older than any staleness timeout.
-		if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d-%d\n", os.Getpid(), round)), 0o600); err != nil {
-			t.Fatalf("creating the stale lock: %v", err)
-		}
-		stale := time.Now().Add(-2 * time.Hour)
-		if err := os.Chtimes(lockPath, stale, stale); err != nil {
-			t.Fatalf("backdating the stale lock: %v", err)
-		}
 
 		type interval struct{ start, end time.Time }
 		var (
@@ -766,69 +760,13 @@ func TestWithWatchLockStaleTakeoverIsExclusive(t *testing.T) {
 	}
 }
 
-// TestWithWatchLockUndeletableStaleLockFails pins that a stale lock that
-// cannot be removed (foreign permissions, or a file another process keeps
-// open) makes WithWatchLock FAIL cleanly naming the removal failure, never
-// spin forever re-examining the same undeletable lock.
-func TestWithWatchLockUndeletableStaleLockFails(t *testing.T) {
-	dir := t.TempDir()
-	dataPath := filepath.Join(dir, "trafico.db")
-	lockPath := filepath.Join(dir, "watch.lock")
-	if err := os.WriteFile(lockPath, []byte("12345\n"), 0o600); err != nil {
-		t.Fatalf("creating the stale lock: %v", err)
-	}
-	stale := time.Now().Add(-2 * time.Hour)
-	if err := os.Chtimes(lockPath, stale, stale); err != nil {
-		t.Fatalf("backdating the stale lock: %v", err)
-	}
-	// Make the file undeletable, per platform: on Windows an open handle
-	// without share-delete blocks the removal; on POSIX a non-empty
-	// directory cannot be removed either.
-	if runtime.GOOS == "windows" {
-		file, err := os.Open(lockPath)
-		if err != nil {
-			t.Fatalf("holding the lock file open: %v", err)
-		}
-		defer file.Close()
-	} else {
-		if err := os.RemoveAll(lockPath); err != nil {
-			t.Fatalf("replacing the lock file: %v", err)
-		}
-		if err := os.Mkdir(lockPath, 0o700); err != nil {
-			t.Fatalf("creating the undeletable lock directory: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(lockPath, "holder"), nil, 0o600); err != nil {
-			t.Fatalf("making the lock directory non-empty: %v", err)
-		}
-		if err := os.Chtimes(lockPath, stale, stale); err != nil {
-			t.Fatalf("backdating the stale lock: %v", err)
-		}
-	}
-
-	done := make(chan error, 1)
-	go func() { done <- WithWatchLock(dataPath, 0, func() error { return nil }) }()
-	select {
-	case err := <-done:
-		var errsErr *errs.Error
-		if !errors.As(err, &errsErr) || errsErr.Type != "internal" {
-			t.Fatalf("error = %v, want an internal errs.Error naming the removal failure", err)
-		}
-		if !strings.Contains(errsErr.Message, "bloqueo") || !strings.Contains(errsErr.Message, lockPath) {
-			t.Errorf("error message %q does not name the lock and its removal failure", errsErr.Message)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("WithWatchLock is spinning on an undeletable stale lock instead of failing")
-	}
-}
-
 // TestWithWatchLock pins the single-instance lock: a second acquisition
-// while one is held fails cleanly (internal error naming the contention),
-// the lock file is removed on release, and a STALE lock file (a crashed
-// process) does not wedge the watcher forever.
+// while one is held fails cleanly (internal error explaining the
+// contention), and once the first holder releases, a new acquisition
+// succeeds.
 func TestWithWatchLock(t *testing.T) {
 	dir := t.TempDir()
 	dataPath := filepath.Join(dir, "trafico.db")
-	lockPath := filepath.Join(dir, "watch.lock")
 
 	acquired := make(chan struct{})
 	release := make(chan struct{})
@@ -861,22 +799,38 @@ func TestWithWatchLock(t *testing.T) {
 	if holderErr != nil {
 		t.Fatalf("the lock holder failed: %v", holderErr)
 	}
-	if _, statErr := os.Stat(lockPath); !os.IsNotExist(statErr) {
-		t.Errorf("the lock file survived the release (stat error %v)", statErr)
-	}
 
-	// A stale lock file — a crashed process — must not block forever.
-	if err := os.WriteFile(lockPath, []byte("12345\n"), 0o600); err != nil {
-		t.Fatalf("creating the stale lock: %v", err)
+	// Once the holder released, a new acquisition succeeds.
+	if err := WithWatchLock(dataPath, 0, func() error { return nil }); err != nil {
+		t.Fatalf("WithWatchLock after the holder released: %v", err)
 	}
-	stale := time.Now().Add(-2 * time.Hour)
-	if err := os.Chtimes(lockPath, stale, stale); err != nil {
-		t.Fatalf("backdating the stale lock: %v", err)
+}
+
+// TestWithWatchLockReleasesOnPanicOrError pins that the lock is released
+// even when fn fails or panics: the error is returned as-is, the panic
+// propagates, and in both cases a later acquisition succeeds (the kernel
+// lock was really unlocked, not left behind by the failed cycle).
+func TestWithWatchLockReleasesOnPanicOrError(t *testing.T) {
+	dir := t.TempDir()
+	dataPath := filepath.Join(dir, "trafico.db")
+
+	sentinel := errors.New("el ciclo falló")
+	if err := WithWatchLock(dataPath, 0, func() error { return sentinel }); !errors.Is(err, sentinel) {
+		t.Fatalf("WithWatchLock with a failing fn = %v, want the fn error", err)
 	}
 	if err := WithWatchLock(dataPath, 0, func() error { return nil }); err != nil {
-		t.Fatalf("WithWatchLock over a stale lock failed: %v", err)
+		t.Fatalf("WithWatchLock after a failing fn: %v", err)
 	}
-	if _, statErr := os.Stat(lockPath); !os.IsNotExist(statErr) {
-		t.Errorf("the stale lock file survived the takeover (stat error %v)", statErr)
+
+	recovered := func() (value any) {
+		defer func() { value = recover() }()
+		_ = WithWatchLock(dataPath, 0, func() error { panic("boom") })
+		return nil
+	}()
+	if recovered != "boom" {
+		t.Fatalf("recovered %v from WithWatchLock, want the panic of fn to propagate", recovered)
+	}
+	if err := WithWatchLock(dataPath, 0, func() error { return nil }); err != nil {
+		t.Fatalf("WithWatchLock after a panicking fn: %v", err)
 	}
 }
