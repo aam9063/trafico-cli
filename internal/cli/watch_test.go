@@ -689,7 +689,7 @@ func TestWatchRunLockContention(t *testing.T) {
 	releaseHolder := make(chan struct{})
 	holderDone := make(chan error, 1)
 	go func() {
-		holderDone <- app.WithWatchLock(dataPath, 0, func() error {
+		holderDone <- app.WithWatchLock(dataPath, func() error {
 			close(holderIn)
 			<-releaseHolder
 			return nil
