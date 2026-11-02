@@ -629,7 +629,7 @@ func newWatchCheckCommand() *cobra.Command {
 			}
 			defer st.Close()
 			var report app.CheckReport
-			checkErr := app.WithWatchLock(paths.DataPath, 0, func() error {
+			checkErr := app.WithWatchLock(paths.DataPath, func() error {
 				var inner error
 				report, inner = app.CheckWatch(cmd.Context(), cfg, loadFetcherOf(cfg), st, args[0])
 				return inner
@@ -673,7 +673,7 @@ func newWatchRunCommand() *cobra.Command {
 			}
 			defer st.Close()
 			var result app.RunAllResult
-			runErr := app.WithWatchLock(paths.DataPath, 0, func() error {
+			runErr := app.WithWatchLock(paths.DataPath, func() error {
 				var inner error
 				result, inner = app.RunAll(cmd.Context(), cfg, loadFetcherOf(cfg), st)
 				return inner

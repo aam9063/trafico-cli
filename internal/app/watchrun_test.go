@@ -730,7 +730,7 @@ func TestWithWatchLockStaleTakeoverIsExclusive(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 				<-start
-				failures[i] = WithWatchLock(dataPath, 0, func() error {
+				failures[i] = WithWatchLock(dataPath, func() error {
 					mu.Lock()
 					from := time.Now()
 					mu.Unlock()
@@ -774,7 +774,7 @@ func TestWithWatchLock(t *testing.T) {
 	var holderErr error
 	go func() {
 		defer close(holderDone)
-		holderErr = WithWatchLock(dataPath, 0, func() error {
+		holderErr = WithWatchLock(dataPath, func() error {
 			close(acquired)
 			<-release
 			return nil
@@ -782,7 +782,7 @@ func TestWithWatchLock(t *testing.T) {
 	}()
 	<-acquired
 
-	err := WithWatchLock(dataPath, 0, func() error { return nil })
+	err := WithWatchLock(dataPath, func() error { return nil })
 	if err == nil {
 		t.Fatal("a second WithWatchLock succeeded while the lock was held, want a clean failure")
 	}
@@ -801,7 +801,7 @@ func TestWithWatchLock(t *testing.T) {
 	}
 
 	// Once the holder released, a new acquisition succeeds.
-	if err := WithWatchLock(dataPath, 0, func() error { return nil }); err != nil {
+	if err := WithWatchLock(dataPath, func() error { return nil }); err != nil {
 		t.Fatalf("WithWatchLock after the holder released: %v", err)
 	}
 }
@@ -815,22 +815,22 @@ func TestWithWatchLockReleasesOnPanicOrError(t *testing.T) {
 	dataPath := filepath.Join(dir, "trafico.db")
 
 	sentinel := errors.New("el ciclo falló")
-	if err := WithWatchLock(dataPath, 0, func() error { return sentinel }); !errors.Is(err, sentinel) {
+	if err := WithWatchLock(dataPath, func() error { return sentinel }); !errors.Is(err, sentinel) {
 		t.Fatalf("WithWatchLock with a failing fn = %v, want the fn error", err)
 	}
-	if err := WithWatchLock(dataPath, 0, func() error { return nil }); err != nil {
+	if err := WithWatchLock(dataPath, func() error { return nil }); err != nil {
 		t.Fatalf("WithWatchLock after a failing fn: %v", err)
 	}
 
 	recovered := func() (value any) {
 		defer func() { value = recover() }()
-		_ = WithWatchLock(dataPath, 0, func() error { panic("boom") })
+		_ = WithWatchLock(dataPath, func() error { panic("boom") })
 		return nil
 	}()
 	if recovered != "boom" {
 		t.Fatalf("recovered %v from WithWatchLock, want the panic of fn to propagate", recovered)
 	}
-	if err := WithWatchLock(dataPath, 0, func() error { return nil }); err != nil {
+	if err := WithWatchLock(dataPath, func() error { return nil }); err != nil {
 		t.Fatalf("WithWatchLock after a panicking fn: %v", err)
 	}
 }
