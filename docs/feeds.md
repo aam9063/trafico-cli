@@ -357,8 +357,11 @@ _0:predefinedLocationSet id="GUID_Inventario_Tramos_Invive"
 
 - 2662 `referencePointDistance` = 1331 × 2 → **todos los tramos tienen PK de inicio y fin**, en
   metros.
-- Sin `lse:kilometerPoint`, sin `lse:province`: el nombre de la carretera y la provincia viajan en
-  `_0:name/_0:descriptor/_0:value` con `tpegDescriptorType` (`linkName`, `townName`, …).
+- Sin `lse:kilometerPoint`, sin `lse:province`: el nombre de la carretera viaja en
+  `_0:name/_0:descriptor/_0:value` con `tpegDescriptorType` (`linkName`), y la **provincia** en
+  `_0:administrativeArea/_0:value` del punto de referencia. El descriptor de área que aparece en el
+  `name` suele venir tipado `other`, así que no sirve para localizarla: se lee `administrativeArea`,
+  tal cual, en mayúsculas (`ALBACETE`).
 
 ---
 
@@ -380,12 +383,27 @@ loc:predefinedLocationReference id="HUELVA_N-433_71400.0" version="20250721"
 
 - El **id codifica** provincia, carretera y PK en metros:
   `PROVINCIA_CARRETERA_PK_EN_METROS` → `HUELVA_N-433_71400.0` = PK 71,4.
-- `pk.from`/`pk.to` **no** existen como elementos; se derivarían del id y de `lengthAffected`.
-  Derivar de un identificador es información de la fuente, pero es frágil: FEED-05 debe decidir y
-  documentarlo (propuesta: `pk` derivado del id, con un campo `pk_source: "identifier"`).
+- El PK **sí existe como elementos**, en el bloque de localización lineal:
 
-El dataset de tramos de riesgo para **motocicletas** (`tramosriesgomotos`) comparte exactamente
-esta forma (97 tramos) y no está en el backlog: no hay comando para él.
+  ```
+  loc:linearWithinLinearElement
+  ├── loc:fromPoint/loc:distanceAlong  ← 71400.0   (metros)
+  ├── loc:toPoint/loc:distanceAlong    ← 73100.0   (metros)
+  └── loc:directionRelativeOnLinearSection
+  ```
+
+  Es decir: 71,4 → 73,1. Coincide exactamente con el PK que codifica el id, que es por lo que una
+  lectura que se saltara este bloque no lo habría notado. `pk_source: "reference"` cuando sale de
+  aquí; el id queda como respaldo (`pk_source: "identifier"`) para un payload sin bloque de
+  localización, y `null` si el id tampoco encaja en el patrón.
+- La **provincia** no se toma del prefijo del id (`HUELVA_…`) ni de `administrativeAreaOfLinearSection`:
+  este feed no publica código INE, así que `province` es `null`. Sacarla de un identificador sería
+  inventar un dato que la fuente no da.
+
+El dataset de tramos de riesgo para **motocicletas** (`tramosriesgomotos`) comparte la misma forma
+(97 tramos) y no está en el backlog: no hay comando para él. Como el tipo de payload es idéntico, la
+guarda de identidad de TEFIVA exige además que algún id encaje en `PROVINCIA_CARRETERA_METROS`; ese
+patrón no se ha verificado contra el feed de motos, que no se ha medido.
 
 ---
 
