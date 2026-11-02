@@ -69,7 +69,7 @@ func writeRadarsResponse(cmd *cobra.Command, response app.RadarsResponse) error 
 		output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderRadarsText})
 }
 
 // parseRadarCriteria translates the flags of the radars command into the

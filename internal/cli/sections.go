@@ -72,7 +72,7 @@ func writeSectionsResponse(cmd *cobra.Command, response app.SectionsResponse) er
 		output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderSectionsText})
 }
 
 // parseSectionCriteria translates the flags of the sections command into

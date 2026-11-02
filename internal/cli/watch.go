@@ -563,7 +563,7 @@ func newWatchShowCommand() *cobra.Command {
 				Watch:    watchView(stored),
 			}
 			pretty := prettyFor(cmd)
-			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderWatchDetailText})
 		},
 	}
 	addPrettyFlag(cmd)
@@ -744,7 +744,7 @@ func writeWatchesResponse(cmd *cobra.Command, st *store.Store) error {
 		Watches:  views,
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderWatchesText})
 }
 
 // writeWatchCheckResponse renders the check report. Cache-fallback warnings

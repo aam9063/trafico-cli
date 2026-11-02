@@ -69,7 +69,7 @@ func writeSignsResponse(cmd *cobra.Command, response app.SignsResponse) error {
 		output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderSignsText})
 }
 
 // parseSignCriteria translates the flags of the signs command into the
