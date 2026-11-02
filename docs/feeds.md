@@ -16,7 +16,7 @@ predicción del documento, manda lo medido, y la contradicción queda anotada en
 | # | Feed | URL | Dialecto | Bloques | Tamaño (gz / plano) | Cambia cada |
 |---|---|---|---|---|---|---|
 | 1 | Incidencias | `datex2/v3/dgt/SituationPublication/datex2_v37.xml` | DATEX II **v3.7** | 1002 situaciones / 1614 registros | 224 KB / 7,17 MB | **60 s exactos** |
-| 2 | Paneles · localizaciones | `datex2/v3/dgt/DevicePublication/vms_datex2_v37.xml` | DATEX II **v3** (`DevicePublication`) | 2517 dispositivos | 108 KB / 4,56 MB | cuasi estático (>55 min) |
+| 2 | Paneles · localizaciones | `datex2/v3/dgt/DevicePublication/vms_datex2_v37.xml` | DATEX II **v3.7** (`levelC/schema/3`, `DevicePublication`) | 2517 dispositivos | 108 KB / 4,56 MB | cuasi estático (>55 min) |
 | 3 | Paneles · mensajes | `datex2/v3/dgt/VmsPublication/datex2_v37.xml` | DATEX II **v3.7** (`VmsPublication`) | 2473 controladores | 68 KB / 3,51 MB | 1–2 min |
 | 4 | Radares fijos | `datex2/dgt/PredefinedLocationsPublication/radares/content.xml` | DATEX II **v1.0** | 737 tramos | 62 KB / 2,05 MB | estático en la ventana medida |
 | 5 | Tramos INVIVE | `datex2/dgt/PredefinedLocationsPublication/tramos_invive/content.xml` | DATEX II **v1.0** | 1331 tramos | 99 KB / 4,38 MB | estático |
@@ -32,8 +32,8 @@ incompatibles** que conviven en el mismo portal:
 
 | Dialecto | Raíz | Feeds | Implicación |
 |---|---|---|---|
-| DATEX II **v3.7** (perfil DGT RTTI) | `<d2:payload xsi:type="sit:SituationPublication">` con `xmlns:com/nl=levelC/schema/3` | incidencias, paneles-mensajes | `encoding/xml` con namespace `levelC/schema/3` |
-| DATEX II **v3** (esquema estándar) | `<d2:payload xsi:type="loc:PredefinedLocationsPublication">` con `xmlns:loc=datex2.eu/schema/3` | tefiva, motos, paneles-localizaciones | namespace distinto (`datex2.eu/schema/3`, no `levelC`) |
+| DATEX II **v3.7** (perfil DGT RTTI) | `<d2:payload xsi:type="sit:SituationPublication">` con `xmlns:com/nl=levelC/schema/3` | incidencias, paneles-mensajes, paneles-localizaciones | `encoding/xml` con namespace `levelC/schema/3` |
+| DATEX II **v3** (esquema estándar) | `<d2:payload xsi:type="loc:PredefinedLocationsPublication">` con `xmlns:loc=datex2.eu/schema/3` | tefiva, motos | namespace distinto (`datex2.eu/schema/3`, no `levelC`) |
 | DATEX II **v1.0** | `<d2LogicalModel modelBaseVersion="1.0">`, namespace por defecto `http://datex2.eu/schema/1_0/1_0` | radares, INVIVE | estructura totalmente distinta: `predefinedLocationSet`, `referencePoint` |
 
 Consecuencia para `internal/datex2`: **no puede haber un único decoder**. Hacen falta tres modelos
