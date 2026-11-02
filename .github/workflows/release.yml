@@ -1,0 +1,35 @@
+name: release
+
+# A tag is the only trigger: the release is a decision, never a side effect of
+# merging. `main` only moves by human decision, and so does this.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # GoReleaser builds the changelog from git history, so it needs all
+          # of it; a shallow clone produces an empty release note.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check the suite before publishing
+        run: bash scripts/check.sh --strict
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

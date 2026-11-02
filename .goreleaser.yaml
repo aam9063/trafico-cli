@@ -1,0 +1,69 @@
+# GoReleaser configuration for trafico-cli.
+#
+# The binary is pure Go and must stay CGO-free: every target builds with
+# CGO_ENABLED=0, which is the same constraint `make check` enforces.
+#
+# The version is injected into internal/cli.version, the variable that
+# `trafico version` prints.
+version: 2
+
+project_name: trafico
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: trafico
+    main: ./cmd/trafico
+    binary: trafico
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # -s -w strips the symbol and debug tables; the version, commit and date
+    # travel in the binary so `trafico version` can report exactly what was
+    # built, which matters the day a feed starts behaving oddly.
+    ldflags:
+      - -s -w
+      - -X github.com/aam9063/trafico-cli/internal/cli.version={{ .Version }}
+      - -X github.com/aam9063/trafico-cli/internal/cli.commit={{ .ShortCommit }}
+      - -X github.com/aam9063/trafico-cli/internal/cli.buildDate={{ .Date }}
+
+archives:
+  - id: trafico
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    # The binary, the licence and the attribution note travel together: the
+    # data is CC BY and the notice has to follow it wherever it goes.
+    files:
+      - LICENSE
+      - README.md
+      - docs/feeds.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^style:'
+      - Merge pull request
+      - Merge branch

@@ -15,7 +15,15 @@ import (
 
 // version is the version string reported by `trafico version`.
 // Release builds override it via -ldflags.
-var version = "0.0.0-dev"
+var (
+	// version, commit and buildDate are injected by GoReleaser through
+	// -ldflags (see .goreleaser.yaml). A plain `go build` leaves them at their
+	// defaults, so `trafico version` says 0.0.0-dev and no more: the binary
+	// never claims a release it is not.
+	version   = "0.0.0-dev"
+	commit    = ""
+	buildDate = ""
+)
 
 // NewRootCommand builds the root `trafico` command. Later tasks attach
 // their subcommands here.
@@ -107,7 +115,14 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print the trafico version",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), version)
+			line := version
+			if commit != "" {
+				line += " (" + commit + ")"
+			}
+			if buildDate != "" {
+				line += " built " + buildDate
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), line)
 			return nil
 		},
 	}
