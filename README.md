@@ -1,6 +1,6 @@
 # trafico-cli
 
-**Spanish traffic data for agents: one JSON document, stable exit codes, no guessing.**
+**Spanish traffic data for agents: human-readable by default, one JSON document with `--json`, stable exit codes, no guessing.**
 
 A single-binary Go CLI that reads the DGT open data feeds, normalises them into a documented JSON
 contract, and lets an agent query incidents by road, kilometre point or area — and watch a route,
@@ -29,7 +29,7 @@ That gap is the whole point of this tool.
 - **Checks a saved route** in one call, grouped by segment in the order the route declares them.
 - **Watches anything queryable** and notifies you when it changes, inside the time windows you set.
 - **Reports feed health** so a silent feed is visible before it costs you a decision.
-- **Speaks JSON first**: one value on stdout, diagnostics on stderr, an `attribution` block in every
+- **Human-readable by default**: plain Spanish text on stdout, one pure JSON value with `--json` for agents, diagnostics on stderr, an `attribution` block in every
   response, and exit codes that encode the failure class.
 
 ## What it does not do
@@ -78,8 +78,8 @@ trafico watch add trabajo route trabajo \
 trafico watch service install      # systemd on Linux, launchd on macOS
 ```
 
-Every command answers with one JSON value. `--pretty` renders the same response as human text in
-Spanish, ending with the attribution line.
+Every command answers with human-readable text in Spanish, ending with the attribution line. `--json`
+prints the same response as one pure JSON value — the contract below — which is what an agent parses.
 
 ## Commands
 
@@ -238,7 +238,7 @@ without consuming it.
 
 Traffic data is published by the **DGT (Dirección General de Tráfico)** through the Spanish National
 Access Point (<https://nap.dgt.es/>) under the **Creative Commons Attribution (CC BY)** licence.
-Every response carries the `attribution` block, and `--pretty` output ends with `Fuente: DGT (CC BY)`.
+Every response carries the `attribution` block, and the human-readable output ends with `Fuente: DGT (CC BY)`.
 
 This data is normalised and filtered by this tool; the output is not the DGT's original document.
 See [`docs/feeds.md`](docs/feeds.md) for how each feed was measured and what it does and does not

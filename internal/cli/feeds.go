@@ -126,6 +126,6 @@ func writeFeedsResponse(cmd *cobra.Command, list []app.FeedStatus, fetched bool)
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 		Feeds:    list,
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }

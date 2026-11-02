@@ -22,7 +22,7 @@ CLI en Go que lee los datos abiertos de tráfico de la DGT (CC BY), los normaliz
 - Antes de abrir el PR, rebase sobre `dev` para evitar ramas out of date y conflictos.
 
 ## Reglas duras
-- stdout solo JSON. Códigos de salida de la sección 6.3.
+- Por defecto, salida legible en texto; con `--json`, un único valor JSON en stdout. Diagnóstico solo en stderr, nunca en stdout (P-01). Códigos de salida de la sección 6.3.
 - Toda salida lleva `attribution` y `meta.published_at`.
 - No inventes campos: si el feed no lo trae, `null`. Conserva el tipo y el texto originales.
 - Nunca envíes ubicaciones, nombres de rutas ni lugares guardados a ningún sitio, ni en avisos.

@@ -43,7 +43,7 @@ func newDoctorCommand() *cobra.Command {
 					output.Diag(cmd.ErrOrStderr(), "%s", *status.Warning)
 				}
 			}
-			pretty, _ := cmd.Flags().GetBool("pretty")
+			pretty := prettyFor(cmd)
 			return output.Write(cmd.OutOrStdout(), report, output.Options{Pretty: pretty})
 		},
 	}

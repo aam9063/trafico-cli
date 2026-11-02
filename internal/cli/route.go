@@ -118,7 +118,7 @@ func newRouteListCommand() *cobra.Command {
 
 // newRouteShowCommand builds `trafico route show <name>`.
 func newRouteShowCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "show <name>",
 		Short: "Show one saved route with its segments",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -143,13 +143,15 @@ func newRouteShowCommand() *cobra.Command {
 						Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 						Route:    route,
 					}
-					pretty, _ := cmd.Flags().GetBool("pretty")
+					pretty := prettyFor(cmd)
 					return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 				}
 			}
 			return errs.NewNotFound(fmt.Sprintf("no existe la ruta %q", args[0]))
 		},
 	}
+	addPrettyFlag(cmd)
+	return cmd
 }
 
 // newRouteRemoveCommand builds `trafico route remove <name> [--yes]`. On a
@@ -227,12 +229,13 @@ func newRouteCheckCommand() *cobra.Command {
 			if response.Warning != "" {
 				output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 			}
-			pretty, _ := cmd.Flags().GetBool("pretty")
+			pretty := prettyFor(cmd)
 			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 		},
 	}
 	cmd.Flags().Bool("signs", false, "incluye los paneles de cada tramo (una descarga más)")
 	cmd.Flags().Bool("radars", false, "incluye los radares de cada tramo (una descarga más)")
+	addPrettyFlag(cmd)
 	return cmd
 }
 
@@ -245,6 +248,6 @@ func writeRoutesResponse(cmd *cobra.Command, routes []app.RouteInfo) error {
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 		Routes:   routes,
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
