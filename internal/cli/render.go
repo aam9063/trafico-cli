@@ -94,6 +94,13 @@ func formatPK(pk *model.PK) string {
 
 // formatPKInterval prints a concrete from-to kilometre interval, the shape
 // route segments and watch road targets carry.
+//
+// Both bounds are values, never pointers: routeCheckPK stores float64 and so
+// does the watch road target. A segment therefore cannot lack a kilometre
+// point, and this call site cannot panic on nil — a native review refuted it
+// once as a nil dereference and it was not. Turning either type into a
+// pointer would make that real, and render_test pins the shape so the
+// compiler is not the only thing that would notice.
 func formatPKInterval(from, to float64) string {
 	return formatPKValue(from) + "-" + formatPKValue(to)
 }
