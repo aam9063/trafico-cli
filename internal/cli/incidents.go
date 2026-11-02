@@ -23,7 +23,7 @@ import (
 func newIncidentsCommand() *cobra.Command {
 	incidentsCmd := &cobra.Command{
 		Use:   "incidents",
-		Short: "List current or planned DGT incidents as JSON",
+		Short: "List current or planned DGT incidents (text by default, --json for one JSON value)",
 		// Cobra only rejects unknown subcommands under the root: validate
 		// here too so `trafico incidents bogus` is an invalid argument
 		// (exit 2) instead of a silent help print (exit 0).
@@ -80,7 +80,7 @@ func runIncidentsList(cmd *cobra.Command, args []string) error {
 // newIncidentsShowCommand builds `trafico incidents show <id>`: the detail
 // of one incident, with no filters applied.
 func newIncidentsShowCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "show <id>",
 		Short: "Show one incident by its id (dgt:<record id>), with no filters",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -101,6 +101,8 @@ func newIncidentsShowCommand() *cobra.Command {
 			return writeIncidentsResponse(cmd, response)
 		},
 	}
+	addPrettyFlag(cmd)
+	return cmd
 }
 
 // writeIncidentsResponse renders the §5.3 envelope. Cache-fallback warnings
@@ -109,7 +111,7 @@ func writeIncidentsResponse(cmd *cobra.Command, response app.IncidentsResponse) 
 	if response.Warning != "" {
 		output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 

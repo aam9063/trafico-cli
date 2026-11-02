@@ -400,7 +400,7 @@ func writeServiceResponse(cmd *cobra.Command, info serviceInfo) error {
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 		Service:  info,
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 
@@ -562,7 +562,7 @@ func newWatchShowCommand() *cobra.Command {
 				Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 				Watch:    watchView(stored),
 			}
-			pretty, _ := cmd.Flags().GetBool("pretty")
+			pretty := prettyFor(cmd)
 			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 		},
 	}
@@ -743,7 +743,7 @@ func writeWatchesResponse(cmd *cobra.Command, st *store.Store) error {
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 		Watches:  views,
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 
@@ -766,7 +766,7 @@ func writeWatchCheckResponse(cmd *cobra.Command, report app.CheckReport) error {
 		Events:   len(report.Events),
 		Kinds:    eventKinds(report.Events),
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 
@@ -803,7 +803,7 @@ func writeWatchRunResponse(cmd *cobra.Command, result app.RunAllResult) error {
 		Runs:      entries,
 		Delivered: result.Delivered,
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 
