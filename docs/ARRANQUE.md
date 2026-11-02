@@ -279,7 +279,7 @@ trafico watch service install --interval 5m
 
 ### 6.2 `schema`
 
-`trafico schema incidents` imprime el JSON Schema. Los tests validan la salida real contra él.
+`trafico schema incident` imprime el JSON Schema (los nombres son los de `trafico schema`, sin extensión: `incident`, `incidents-response`). Los tests validan la salida real contra él.
 
 ### 6.3 Errores y códigos de salida
 
