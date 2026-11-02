@@ -35,6 +35,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newIncidentsCommand())
 	root.AddCommand(newSignsCommand())
 	root.AddCommand(newRadarsCommand())
+	root.AddCommand(newSectionsCommand())
 	root.AddCommand(newPlaceCommand())
 	root.AddCommand(newRouteCommand())
 	root.AddCommand(newFeedsCommand())
