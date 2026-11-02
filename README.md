@@ -44,7 +44,30 @@ That gap is the whole point of this tool.
 
 ## Install
 
-No release is published yet. Build from source:
+One line on Linux and macOS — the script picks the right release asset and verifies its SHA-256
+against the published `checksums.txt` before unpacking anything:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aam9063/trafico-cli/dev/install.sh | sh
+```
+
+The binary lands in `${TRAFICO_INSTALL_DIR:-$HOME/.local/bin}` (created if needed) and the script
+prints the exact `PATH` line if that directory is not already on it. It is safe to re-run:
+installing over an existing binary replaces it.
+
+```bash
+# Install a specific release instead of the latest one
+TRAFICO_VERSION=v0.1.0 sh install.sh
+
+# Install somewhere else
+TRAFICO_INSTALL_DIR=/usr/local/bin sh install.sh
+```
+
+**Windows:** the installer is POSIX-only on purpose. Download `trafico_<version>_windows_<arch>.zip`
+from the [releases page](https://github.com/aam9063/trafico-cli/releases) and put `trafico.exe` on
+your `PATH`.
+
+Build from source instead:
 
 ```bash
 git clone https://github.com/aam9063/trafico-cli.git
