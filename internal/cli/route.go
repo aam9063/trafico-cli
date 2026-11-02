@@ -197,7 +197,7 @@ func newRouteRemoveCommand() *cobra.Command {
 // per-segment report. The application layer (app.RouteCheck) fetches the
 // feed exactly once for the whole route and filters per segment.
 func newRouteCheckCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "check <name>",
 		Short: "Report the current incidents on every segment of a saved route, in declaration order",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -211,7 +211,14 @@ func newRouteCheckCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			response, err := app.RouteCheck(cmd.Context(), cfg, fetcher, args[0])
+			// The extra feeds are opt-in: each one is another full
+			// download, and the default check stays one request.
+			signs, _ := cmd.Flags().GetBool("signs")
+			radars, _ := cmd.Flags().GetBool("radars")
+			response, err := app.RouteCheckWith(cmd.Context(), cfg, fetcher, args[0], app.RouteCheckOptions{
+				Signs:  signs,
+				Radars: radars,
+			})
 			if err != nil {
 				return err
 			}
@@ -224,6 +231,9 @@ func newRouteCheckCommand() *cobra.Command {
 			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 		},
 	}
+	cmd.Flags().Bool("signs", false, "incluye los paneles de cada tramo (una descarga más)")
+	cmd.Flags().Bool("radars", false, "incluye los radares de cada tramo (una descarga más)")
+	return cmd
 }
 
 // writeRoutesResponse renders the envelope with the saved-route list. The
