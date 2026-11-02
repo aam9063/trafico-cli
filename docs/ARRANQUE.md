@@ -77,7 +77,7 @@ Con estos mismos datos hay apps web (HayTrafico, trafico.live), capas JSON para 
   ```json
   "attribution": { "source": "DGT, Punto de Acceso Nacional", "license": "CC BY", "url": "https://nap.dgt.es/", "fetched_at": "2026-10-28T09:30:12Z" }
   ```
-- `pretty` termina con una línea "Fuente: DGT (CC BY)".
+- La salida legible termina con una línea "Fuente: DGT (CC BY)".
 - El README tiene una sección de atribución y aviso de que no es una fuente oficial.
 
 ---
@@ -86,7 +86,7 @@ Con estos mismos datos hay apps web (HayTrafico, trafico.live), capas JSON para 
 
 | ID | Principio |
 |---|---|
-| P-01 | **JSON por defecto** en stdout, un único valor JSON por comando (o JSONL). Diagnóstico solo en stderr. |
+| P-01 | **Texto legible por defecto** en stdout; con `--json`, un único valor JSON por comando (o JSONL). Diagnóstico solo en stderr, nunca en stdout. |
 | P-02 | **Códigos de salida estables** y sobre de error JSON (sección 6.3). |
 | P-03 | **Solo lectura.** No hay escrituras frente a terceros. Las únicas escrituras son locales: config, caché, rutas y vigilancias. |
 | P-04 | **Fiel a la fuente.** Ningún campo se inventa. Lo que no viene en el feed es `null`. El texto original de la DGT se conserva en `raw_description`. |
@@ -273,9 +273,9 @@ trafico watch service install --interval 5m
 
 ### 6.1 Salida
 
-- stdout: un valor JSON (o JSONL). stderr: diagnóstico y errores en JSON si stdout no es terminal.
+- stdout: texto legible por defecto; con `--json`, un único valor JSON (o JSONL). stderr: diagnóstico y errores en JSON si stdout no es terminal.
 - Fechas en ISO 8601 UTC. PK en número.
-- Sin ANSI salvo `pretty` en terminal. `pretty` en español, con la hora local de Madrid.
+- Sin ANSI salvo la salida legible en terminal. El texto legible está en español, con la hora local de Madrid.
 
 ### 6.2 `schema`
 
@@ -311,7 +311,7 @@ description: Consultar incidencias, obras, paneles y radares de la DGT por carre
 # trafico
 
 ## Reglas
-- Usa la salida JSON. Mira siempre meta.published_at y meta.stale antes de decir "ahora".
+- Pide `--json` cuando parsees la salida. Mira siempre meta.published_at y meta.stale antes de decir "ahora".
 - Si meta.coverage_note aparece, dilo: la cobertura no incluye lo que gestionan la SCT (Cataluña) ni el Gobierno Vasco. No digas "no hay datos de Cataluña": puede haber incidencias de la DGT en Barcelona, Girona o Tarragona.
 - Cita la fuente: "Datos de la DGT".
 - No inventes tiempos de viaje ni retenciones: solo lo que viene en el feed.
@@ -569,7 +569,7 @@ CLI en Go que lee los datos abiertos de tráfico de la DGT (CC BY), los normaliz
 - Rama `tr/<id>-descripcion`. Commit y PR. No hagas merge a `main`.
 
 ## Reglas duras
-- stdout solo JSON. Códigos de salida de la sección 6.3.
+- Por defecto, salida legible en texto; con `--json`, un único valor JSON en stdout. Diagnóstico solo en stderr, nunca en stdout (P-01). Códigos de salida de la sección 6.3.
 - Toda salida lleva `attribution` y `meta.published_at`.
 - No inventes campos: si el feed no lo trae, `null`. Conserva el tipo y el texto originales.
 - Nunca envíes ubicaciones, nombres de rutas ni lugares guardados a ningún sitio, ni en avisos.

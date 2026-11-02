@@ -19,7 +19,7 @@ import (
 func newSignsCommand() *cobra.Command {
 	signsCmd := &cobra.Command{
 		Use:   "signs",
-		Short: "List DGT variable message signs (paneles de mensaje variable) as JSON",
+		Short: "List DGT variable message signs (paneles de mensaje variable) (text by default, --json for one JSON value)",
 		// Cobra only rejects unknown subcommands under the root: validate
 		// here too so `trafico signs bogus` is an invalid argument (exit 2)
 		// instead of a silent help print (exit 0).
@@ -68,7 +68,7 @@ func writeSignsResponse(cmd *cobra.Command, response app.SignsResponse) error {
 	if response.Warning != "" {
 		output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 

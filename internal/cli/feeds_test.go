@@ -80,12 +80,28 @@ func newCLIServer(t *testing.T) (*httptest.Server, func(string) int) {
 // the captured stdout and stderr.
 func runCLI(t *testing.T, args ...string) (errs.ExitCode, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
+	// FORMAT-01: the human-readable text is the default now, so a test that
+	// asserts on the JSON contract asks for it explicitly -- unless it is
+	// already choosing a format itself.
+	if !hasFormatFlag(args) {
+		args = append(args, "--json")
+	}
 	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
 	root := NewRootCommand()
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	code := executeRoot(root, args)
 	return code, stdout, stderr
+}
+
+// hasFormatFlag reports whether the invocation already picks a format.
+func hasFormatFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--json" || strings.HasPrefix(arg, "--pretty") {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeJSON parses stdout into a generic document.

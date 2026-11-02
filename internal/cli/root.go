@@ -15,14 +15,22 @@ import (
 
 // version is the version string reported by `trafico version`.
 // Release builds override it via -ldflags.
-var version = "0.0.0-dev"
+var (
+	// version, commit and buildDate are injected by GoReleaser through
+	// -ldflags (see .goreleaser.yaml). A plain `go build` leaves them at their
+	// defaults, so `trafico version` says 0.0.0-dev and no more: the binary
+	// never claims a release it is not.
+	version   = "0.0.0-dev"
+	commit    = ""
+	buildDate = ""
+)
 
 // NewRootCommand builds the root `trafico` command. Later tasks attach
 // their subcommands here.
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "trafico",
-		Short:         "Query Spanish DGT road traffic open data as JSON for AI agents",
+		Short:         "Query Spanish DGT road traffic open data for humans and AI agents",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -44,13 +52,29 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
-// addPrettyFlag registers --pretty on a command that renders its output as a
-// JSON envelope (ARRANQUE section 6.1). It is deliberately not a root
-// persistent flag: a command that prints plain text, such as `trafico
-// version`, must reject the flag as unknown (exit 2) instead of silently
-// ignoring it (CMD-02 review).
+// addPrettyFlag registers the output-format flags on a command that renders an
+// envelope (ARRANQUE section 6.1). It is deliberately not a root persistent
+// flag: a command that prints plain text, such as `trafico version`, must
+// reject the flag as unknown (exit 2) instead of silently ignoring it (CMD-02
+// review).
+//
+// The human-readable text is the DEFAULT (FORMAT-01 S1): the binary exists to
+// be read. --json restores the pure JSON value, byte for byte the contract in
+// schemas/, which is what an agent parses. --pretty is kept and hidden so a
+// script that already passes it keeps working; it selects nothing now.
 func addPrettyFlag(cmd *cobra.Command) {
-	cmd.Flags().Bool("pretty", false, "render output in human-readable Spanish text instead of JSON")
+	cmd.Flags().Bool("json", false, "emite el JSON puro documentado en schemas/ en lugar del texto legible")
+	cmd.Flags().Bool("pretty", true, "obsoleto: el texto legible ya es el valor por defecto, usa --json")
+	_ = cmd.Flags().MarkHidden("pretty")
+}
+
+// prettyFor reports whether the command renders human-readable output.
+func prettyFor(cmd *cobra.Command) bool {
+	forced, err := cmd.Flags().GetBool("json")
+	if err != nil {
+		return true
+	}
+	return !forced
 }
 
 // Execute runs the root command and returns the process exit code.
@@ -91,7 +115,14 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print the trafico version",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), version)
+			line := version
+			if commit != "" {
+				line += " (" + commit + ")"
+			}
+			if buildDate != "" {
+				line += " built " + buildDate
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), line)
 			return nil
 		},
 	}

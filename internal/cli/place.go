@@ -159,7 +159,7 @@ func writePlacesResponse(cmd *cobra.Command, places []app.Place) error {
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 		Places:   places,
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 

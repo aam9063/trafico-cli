@@ -19,7 +19,7 @@ import (
 func newRadarsCommand() *cobra.Command {
 	radarsCmd := &cobra.Command{
 		Use:   "radars",
-		Short: "List DGT fixed radars (radares fijos) as JSON",
+		Short: "List DGT fixed radars (radares fijos) (text by default, --json for one JSON value)",
 		// Cobra only rejects unknown subcommands under the root: validate
 		// here too so `trafico radars bogus` is an invalid argument (exit 2)
 		// instead of a silent help print (exit 0).
@@ -68,7 +68,7 @@ func writeRadarsResponse(cmd *cobra.Command, response app.RadarsResponse) error 
 	if response.Warning != "" {
 		output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 	}
-	pretty, _ := cmd.Flags().GetBool("pretty")
+	pretty := prettyFor(cmd)
 	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
 }
 
