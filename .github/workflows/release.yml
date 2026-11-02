@@ -27,6 +27,15 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # --strict fails when staticcheck or govulncheck are missing rather
+      # than silently skipping them (scripts/check.sh), so the release installs
+      # the same tools the CI job does. Without this the gate stops the release
+      # for a missing linter instead of a real defect.
+      - name: Install linters
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+
       - name: Check the suite before publishing
         run: bash scripts/check.sh --strict
 
