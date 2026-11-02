@@ -68,7 +68,7 @@ La frescura se calcula con `<com:publicationTime>` del propio XML, no con `Date`
 | Incidencias | `13:12:17.098` → `13:13:17.099` → `13:14:17.099` | **60,0 s**, exacta |
 | Paneles · mensajes | `13:04:37` → `13:06:40` → `13:07:41` | 1–2 min, irregular |
 | Paneles · localizaciones | `12:05:01` en las tres | >55 min (cuasi estático) |
-| Radares, INVIVE, TEFIVA, motos | sin `publicationTime` utilizable; contenido idéntico en las tres | estático |
+| Radares, INVIVE, TEFIVA, motos | **traen `publicationTime` pero congelado** (radares: `2025-12-18`, diez meses antes de la medición), así que no sirve como fuente de frescura; contenido idéntico en las tres | estático |
 
 El número de incidencias creció 1002 → 1004 → 1009 en tres minutos: la caché de 60 s es la
 duración correcta, ni más ni menos.
@@ -327,6 +327,9 @@ AUTONÓMICA` (82), `CARRETERA` (81), `TÚNEL` (15), `CIRCUNVALACIÓN` (7), `CARR
   derivar el tipo del prefijo es una decisión a documentar en FEED-04.
 - PK por nombre: llega como `referencePointDistance` **en metros** (26600.0 → PK 26,6), no como
   `kilometerPoint`.
+- PK sin orden garantizado: algunos radares de tramo publican el punto fin a menos metros que el
+  ini (`CVM_163929`: ini 2650 m, fin 1400 m → `pk: {from: 2.65, to: 1.4}`). Se conserva el par tal
+  cual, sin reordenar; la convención `from <= to` del feed de incidencias (§4.3) no aplica aquí.
 - Provincia: **código INE** (`50`), no nombre. Hace falta una tabla INE → nombre para
   `--province`, y decidir qué hacer si no se quiere mantener esa tabla (opción: `province: null`
   y provincia solo en los feeds que la dan por nombre).
@@ -389,7 +392,7 @@ esta forma (97 tramos) y no está en el backlog: no hay comando para él.
 ## 9. Atribución y frescura, con datos
 
 - `<com:publicationTime>` existe en incidencias, paneles-mensajes y paneles-localizaciones. En los
-  feeds v1.0 (radares, INVIVE) y en tefiva/motos **no hay `publicationTime`**: para esos feeds
+  feeds v1.0 (radares, INVIVE) y en tefiva/motos el `publicationTime` **existe pero está congelado** (radares: 2025-12-18), así que no es una fuente de frescura: para esos feeds
   `published_at` será `null` y la frescura se mide por la hora de descarga. Esto afecta a
   `meta.published_at` y a `stale` (P-08) y hay que decidirlo en FEED-03/04/05, no inventar un
   valor.
