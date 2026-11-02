@@ -49,6 +49,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newFeedsCommand())
 	root.AddCommand(newDoctorCommand())
 	root.AddCommand(newWatchCommand())
+	root.AddCommand(newSkillsCommand())
+	root.AddCommand(newSchemaCommand())
 	return root
 }
 
