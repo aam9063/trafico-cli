@@ -147,3 +147,43 @@ func TestParseTefivaSectionsIdentityGuard(t *testing.T) {
 		}
 	}
 }
+
+// The motos feed (tramosriesgomotos) is the same v3 payload, uses the same
+// loc:PredefinedLocation references and its ids match the documented
+// PROVINCIA_CARRETERA_METROS form just as TEFIVA's do — measured against the
+// real 97-section payload, not assumed. Its com:feedDescription prose does
+// not name TEFIVA, which is the only measured discriminator, so the parser
+// must reject it: without the guard it parses as animal sections and the
+// command exits 0 with plausible data.
+func TestParseTefivaSectionsRejectsMotosBody(t *testing.T) {
+	body, err := os.ReadFile("../../testdata/feeds/motos/snap-1.xml")
+	if err != nil {
+		t.Fatalf("reading the motos fixture: %v", err)
+	}
+	sections, err := ParseTefivaSections(strings.NewReader(string(body)))
+	if err == nil || len(sections) != 0 {
+		t.Errorf("got %d sections and err %v; want a feed-changed error, because this is the motos feed", len(sections), err)
+	}
+}
+
+// TestParseTefivaSectionsRejectsMissingFeedDescription pins the fail-closed
+// half of the prose guard: a TEFIVA-shaped body whose com:feedDescription has
+// been stripped is of unknown origin, so it must be rejected even though its
+// ids match the documented pattern. An unknown body must never become animal
+// sections.
+func TestParseTefivaSectionsRejectsMissingFeedDescription(t *testing.T) {
+	body := string(sectionsFixture(t, "../../testdata/feeds/tefiva/snap-1.xml"))
+	const block = `<com:feedDescription>
+        <com:values>
+            <com:value lang="es">Publicación TEFIVA: Tramos con especial frecuencia de incidentes viales con implicación de animales en la RCE</com:value>
+        </com:values>
+    </com:feedDescription>
+    `
+	if !strings.Contains(body, block) {
+		t.Fatal("the tefiva fixture no longer carries the expected com:feedDescription block; update this test")
+	}
+	sections, err := ParseTefivaSections(strings.NewReader(strings.Replace(body, block, "", 1)))
+	if err == nil || len(sections) != 0 {
+		t.Errorf("got %d sections and err %v; want a feed-changed error naming the absent com:feedDescription", len(sections), err)
+	}
+}

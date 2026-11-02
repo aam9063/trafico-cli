@@ -10,6 +10,7 @@ package datex2
 //   - TEFIVA / SPFRIA ("tefiva", docs/feeds.md §8): the road sections with
 //     a special frequency of animal collisions, DATEX II v3 (namespace
 //     datex2.eu/schema/3, NOT the levelC/schema/3 family of signs.go).
+//     Its identity guard is partly prose: see tefivaDescriptionMatches.
 //
 // As everywhere in this package, namespace matching is on the URI, never on
 // the prefix, because prefixes are arbitrary per payload.
@@ -214,6 +215,62 @@ type xmlTefivaLinearPoint struct {
 	DistanceAlong *float64 `xml:"distanceAlong"`
 }
 
+// xmlTefivaFeedDescription mirrors com:feedDescription of a v3 payload: one
+// com:values block holding one com:value per language, each with a lang
+// attribute. The TEFIVA feed publishes exactly one, lang="es".
+type xmlTefivaFeedDescription struct {
+	Values struct {
+		Value []struct {
+			Lang  string `xml:"lang,attr"`
+			Value string `xml:",chardata"`
+		} `xml:"value"`
+	} `xml:"values"`
+}
+
+// tefivaDescriptionValue returns the feed description text of the payload,
+// preferring the lang="es" value and falling back to the first published one;
+// "" when the element carries none. Whitespace is trimmed: the feed wraps the
+// prose across lines.
+func tefivaDescriptionValue(desc xmlTefivaFeedDescription) string {
+	es, first := "", ""
+	for _, v := range desc.Values.Value {
+		if first == "" {
+			first = strings.TrimSpace(v.Value)
+		}
+		if v.Lang == "es" && es == "" {
+			es = strings.TrimSpace(v.Value)
+		}
+	}
+	if es != "" {
+		return es
+	}
+	return first
+}
+
+// tefivaDescriptionMatches reports whether the payload's com:feedDescription
+// identifies the TEFIVA feed. THIS IS A PROSE MATCH, NOT A STRUCTURAL ONE:
+// the motos feed (tramosriesgomotos) is the same v3 d2:payload, the same
+// PredefinedLocationsPublication type, the same loc:PredefinedLocation
+// reference shape and the same PROVINCIA_CARRETERA_METROS id pattern (both
+// verified against the real feeds), so no element, attribute or identifier
+// tells them apart. The only measured signal that differs is the frozen
+// description text:
+//
+//	tefiva: "Publicación TEFIVA: Tramos con especial frecuencia de ..."
+//	motos:  "Publicación de los tramos de elevado riesgo para motoristas"
+//
+// The trade: match the stable brand token TEFIVA, case-insensitively, and
+// nothing else. Generic words ("tramos", "animales", "publicación") are
+// deliberately NOT matched, because the motos description uses them too and
+// would false-positive. The cost is the fragility documented in docs/feeds.md
+// §8: if the DGT ever rewords the description and drops the brand token, this
+// parser rejects a legitimate TEFIVA payload (feed_changed, exit 7) instead of
+// silently accepting a foreign one as animal sections (exit 0). Failing closed
+// is the chosen direction.
+func tefivaDescriptionMatches(description string) bool {
+	return strings.Contains(strings.ToLower(description), "tefiva")
+}
+
 // ParseInviveSections streams a DGT INVIVE payload (a v1.0
 // PredefinedLocationsPublication whose predefinedLocationSet is the INVIVE
 // inventory, docs/feeds.md §7) into InviveSection values, in feed order.
@@ -301,11 +358,15 @@ func ParseInviveSections(r io.Reader) ([]InviveSection, error) {
 //
 // Like ParseInviveSections it validates the payload identity before
 // returning: the root must be a v3 d2:payload typed
-// PredefinedLocationsPublication. A body from another DGT dialect — the
-// v1.0 INVIVE or radar payload, the v3.7 situations payload — does not
-// carry that root and type, so without the check it would parse as zero
-// sections and no error, and `trafico sections --kind animals` would exit
-// 0 with sections: [] instead of feed_changed (exit 7).
+// PredefinedLocationsPublication, the com:feedDescription must name TEFIVA,
+// and at least one id must match the documented form. Two guards are prose-
+// adjacent: the feed description is frozen prose (tefivaDescriptionMatches),
+// and the id pattern is a shape shared with the motos feed, which is why the
+// description guard runs first. A body from another DGT dialect — the v1.0
+// INVIVE or radar payload, the v3.7 situations payload, or the v3 motos
+// payload — fails one of them, so without the checks it would parse as zero
+// (or, for motos, plausible) sections and `trafico sections --kind animals`
+// would exit 0 instead of feed_changed (exit 7).
 func ParseTefivaSections(r io.Reader) ([]TefivaSection, error) {
 	d := xml.NewDecoder(r)
 	var sections []TefivaSection
@@ -313,6 +374,8 @@ func ParseTefivaSections(r io.Reader) ([]TefivaSection, error) {
 	var rootName xml.Name
 	var rootXsiTypeValue string
 	seenRoot, rootClosed := false, false
+	seenFeedDescription := false
+	var feedDescription xmlTefivaFeedDescription
 	for {
 		tok, err := d.Token()
 		if err == io.EOF {
@@ -325,6 +388,12 @@ func ParseTefivaSections(r io.Reader) ([]TefivaSection, error) {
 		case xml.StartElement:
 			if !seenRoot {
 				rootName, rootXsiTypeValue, seenRoot = t.Name, rootPublicationType(t.Attr), true
+			}
+			if t.Name.Space == nsDatexV3CommonLoc && t.Name.Local == "feedDescription" {
+				seenFeedDescription = true
+				if err := d.DecodeElement(&feedDescription, &t); err != nil {
+					return nil, fmt.Errorf("datex2: decoding tefiva feed description: %w", err)
+				}
 			}
 			if t.Name.Space == nsDatexV3Location && t.Name.Local == "predefinedLocationReference" {
 				var raw xmlTefivaLocationReference
@@ -349,6 +418,10 @@ func ParseTefivaSections(r io.Reader) ([]TefivaSection, error) {
 		return nil, fmt.Errorf("datex2: payload is not a DATEX II v3 d2:payload document (root %q in %q)", rootName.Local, rootName.Space)
 	case xsiTypeLocal(rootXsiTypeValue) != "PredefinedLocationsPublication":
 		return nil, fmt.Errorf("datex2: payload is not a PredefinedLocationsPublication (root xsi:type %q)", rootXsiTypeValue)
+	case !seenFeedDescription:
+		return nil, fmt.Errorf("datex2: payload carries no com:feedDescription, so it cannot be identified as the TEFIVA animal-section feed; rejecting a payload of unknown origin")
+	case !tefivaDescriptionMatches(tefivaDescriptionValue(feedDescription)):
+		return nil, fmt.Errorf("datex2: payload is not the TEFIVA animal-section feed (com:feedDescription %q does not name TEFIVA)", tefivaDescriptionValue(feedDescription))
 	case !hasTefivaIdentifiers(sections):
 		return nil, fmt.Errorf("datex2: payload is not the SPFRIA/TEFIVA animal-section inventory (no predefinedLocationReference id in the PROVINCIA_CARRETERA_METROS form)")
 	}
@@ -356,13 +429,11 @@ func ParseTefivaSections(r io.Reader) ([]TefivaSection, error) {
 }
 
 // hasTefivaIdentifiers reports whether at least one reference id matches the
-// documented PROVINCIA_CARRETERA_METROS form. The tramosriesgomotos feed is a
-// v3 PredefinedLocationsPublication as well, so the root and the payload type
-// alone would let its body parse as zero sections and reach the caller as an
-// empty list with exit 0 instead of feed_changed. The id shape is the payload
-// identity signal, the same way the predefinedLocationSet id is one for v1.0.
-// It is verified against this feed's fixture only: the motos payload has not
-// been measured.
+// documented PROVINCIA_CARRETERA_METROS form. It is the second identity
+// signal, kept after the feed-description prose guard: the motos feed's ids
+// match this pattern too (verified against the real payload), so on its own
+// it discriminates nothing — but it catches a description reword that kept
+// the TEFIVA token while the body changed into something else.
 func hasTefivaIdentifiers(sections []TefivaSection) bool {
 	for _, section := range sections {
 		if tefivaIDMetres(section.ID) {
