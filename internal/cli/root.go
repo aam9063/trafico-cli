@@ -54,6 +54,12 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
+// attributionClosingLine is the mandatory CC BY closing line of every
+// human-readable render (ARRANQUE section 2.1); the PrettyFunc contract of
+// internal/output requires it, and internal/watch reuses the same wording
+// for notifications.
+const attributionClosingLine = "Fuente: DGT (CC BY)\n"
+
 // addPrettyFlag registers the output-format flags on a command that renders an
 // envelope (ARRANQUE section 6.1). It is deliberately not a root persistent
 // flag: a command that prints plain text, such as `trafico version`, must

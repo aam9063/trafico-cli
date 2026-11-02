@@ -142,6 +142,84 @@ func TestSchemaOutputStaysOneLine(t *testing.T) {
 	}
 }
 
+// TestSchemaListTextRendersOneRowPerSchema pins the human-readable default
+// of `trafico schema` (FORMAT-01): one aligned row per published schema
+// with its name, title and description, never the indented-JSON fallback.
+func TestSchemaListTextRendersOneRowPerSchema(t *testing.T) {
+	code, stdout, stderr := runCLIDefaultFormat(t, "schema")
+
+	if code != errs.ExitSuccess {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	if strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Fatalf("the text output must not be the JSON fallback: %.120s", out)
+	}
+	if !strings.Contains(out, "Esquemas publicados (2):") {
+		t.Errorf("the heading must announce the two published schemas, got %.120s", out)
+	}
+	previous := -1
+	for _, name := range publishedSchemaNames {
+		line := schemaRowLine(out, name)
+		if line < 0 {
+			t.Errorf("the text output carries no row for the schema %q: %q", name, out)
+			continue
+		}
+		if previous >= 0 && line <= previous {
+			t.Errorf("the row of %q is not below the previous row in the list", name)
+		}
+		previous = line
+	}
+	summary, err := schemaSummaryOf("incident")
+	if err != nil {
+		t.Fatalf("reading the embedded summary of incident: %v", err)
+	}
+	if !strings.Contains(out, summary.Title) {
+		t.Errorf("the row of incident misses its title %q", summary.Title)
+	}
+	if !strings.HasSuffix(out, "Fuente: DGT (CC BY)\n") {
+		t.Errorf("the text output must end with the attribution line, got %q", out)
+	}
+}
+
+// schemaRowLine returns the index of the line that starts the row of the
+// schema name (two spaces of indent, then the name), or -1 when absent.
+func schemaRowLine(out, name string) int {
+	for i, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "  "+name) {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestSchemaDocumentTextRendersHeadingAndFormattedJSON pins the
+// human-readable default of `trafico schema <nombre>` (FORMAT-01): a
+// heading naming the schema and the document as formatted JSON, never the
+// indented-JSON envelope fallback.
+func TestSchemaDocumentTextRendersHeadingAndFormattedJSON(t *testing.T) {
+	code, stdout, stderr := runCLIDefaultFormat(t, "schema", "incidents-response")
+
+	if code != errs.ExitSuccess {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.HasPrefix(out, "Esquema: incidents-response\n") {
+		t.Errorf("the text output must open with a heading naming the schema, got %.120s", out)
+	}
+	if strings.Contains(out, "\"schema_version\":1,\"meta\":") {
+		t.Errorf("the text output must not be the JSON envelope fallback: %.120s", out)
+	}
+	// Formatted JSON: the document is indented, not the compact one-liner
+	// of the --json path.
+	if !strings.Contains(out, "\n  \"$schema\"") {
+		t.Errorf("the schema document must be rendered as formatted JSON, got %.200s", out)
+	}
+	if !strings.HasSuffix(out, "Fuente: DGT (CC BY)\n") {
+		t.Errorf("the text output must end with the attribution line, got %q", out)
+	}
+}
+
 // TestSchemaUnknownNameIsUsage pins ARRANQUE §6.3 via ODD ola-5-agentes S6:
 // an unknown schema name is a usage error (exit 2), never an empty list
 // with exit 0.

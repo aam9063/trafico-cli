@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -83,7 +84,7 @@ func newSkillsGetCommand() *cobra.Command {
 				Skill:    recipe,
 			}
 			pretty := prettyFor(cmd)
-			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderSkillDetailText})
 		},
 	}
 	addPrettyFlag(cmd)
@@ -103,10 +104,54 @@ func runSkillsList(cmd *cobra.Command, args []string) error {
 		Skills:   summaries,
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderSkillsListText})
 }
 
-// recipeIDList returns the ids of every embedded recipe, for error messages.
+// renderSkillsListText renders `trafico skills` for a human (FORMAT-01):
+// a heading with the recipe count and one aligned row per recipe with its
+// identifier and one-line purpose, closed by the attribution line
+// (ARRANQUE section 2.1). No ANSI (ARRANQUE section 6.1).
+func renderSkillsListText(w io.Writer, v any) error {
+	response, ok := v.(skillsListResponse)
+	if !ok {
+		return errs.NewInternal("el render de texto de skills recibió una respuesta de otro tipo")
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Recetas para agentes (%d):\n\n", len(response.Skills))
+	width := 0
+	for _, skill := range response.Skills {
+		if l := len(skill.ID); l > width {
+			width = l
+		}
+	}
+	for _, skill := range response.Skills {
+		fmt.Fprintf(&b, "  %-*s  %s\n", width, skill.ID, skill.Summary)
+	}
+	b.WriteString("\n" + attributionClosingLine)
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
+// renderSkillDetailText renders `trafico skills get <receta>` for a human
+// (FORMAT-01): labelled fields in Spanish, with the exact command on its
+// own indented line so a user can copy it into a shell without digging it
+// out of prose, closed by the attribution line (ARRANQUE section 2.1).
+func renderSkillDetailText(w io.Writer, v any) error {
+	response, ok := v.(skillDetailResponse)
+	if !ok {
+		return errs.NewInternal("el render de texto de skills get recibió una respuesta de otro tipo")
+	}
+	recipe := response.Skill
+	var b strings.Builder
+	fmt.Fprintf(&b, "Receta: %s\n", recipe.ID)
+	fmt.Fprintf(&b, "Resumen: %s\n", recipe.Summary)
+	fmt.Fprintf(&b, "\nComando:\n  %s\n", strings.Join(recipe.Command, " "))
+	fmt.Fprintf(&b, "\nResponde a:\n  %s\n", recipe.Answers)
+	fmt.Fprintf(&b, "\nCómo leer la salida:\n  %s\n", recipe.Reading)
+	b.WriteString("\n" + attributionClosingLine)
+	_, err := io.WriteString(w, b.String())
+	return err
+}
 func recipeIDList() []string {
 	recipes := agentdocs.Recipes()
 	ids := make([]string, 0, len(recipes))
