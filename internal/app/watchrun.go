@@ -696,13 +696,10 @@ func (s *scratchStore) cleanup() {
 const lockFileName = "watch.lock"
 
 // WithWatchLock runs fn while holding the single-instance watch lock in the
-// data directory of the database at dataPath.
-//
-// The second parameter is IGNORED: it used to be the staleness timeout of
-// the old mtime-based lock, and the advisory lock needs no staleness
-// heuristic (the kernel drops the lock when the holder dies). It stays in
-// the signature so the CLI call sites do not change.
-func WithWatchLock(dataPath string, _ time.Duration, fn func() error) error {
+// data directory of the database at dataPath. The lock is an OS advisory
+// lock, so the kernel releases it when the holder dies and there is no
+// staleness heuristic to tune.
+func WithWatchLock(dataPath string, fn func() error) error {
 	dir := filepath.Dir(dataPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return errs.NewInternal(fmt.Sprintf("no se pudo crear el directorio de datos %s: %v", dir, err))
