@@ -44,7 +44,7 @@ func newDoctorCommand() *cobra.Command {
 				}
 			}
 			pretty := prettyFor(cmd)
-			return output.Write(cmd.OutOrStdout(), report, output.Options{Pretty: pretty})
+			return output.Write(cmd.OutOrStdout(), report, output.Options{Pretty: pretty, PrettyFunc: renderDoctorText})
 		},
 	}
 	addPrettyFlag(cmd)
