@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/aam9063/trafico-cli/internal/errs"
 	"github.com/aam9063/trafico-cli/internal/output"
@@ -93,7 +95,7 @@ func writeSchemaList(cmd *cobra.Command) error {
 		Schemas:  summaries,
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderSchemaListText})
 }
 
 // writeSchemaDocument renders one embedded schema document. The document is
@@ -123,7 +125,7 @@ func writeSchemaDocument(cmd *cobra.Command, name string) error {
 		Schema:   compact.Bytes(),
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderSchemaDocumentText})
 }
 
 // schemaNames returns the command names of every embedded schema, sorted as
@@ -158,4 +160,93 @@ func schemaSummaryOf(name string) (schemaSummary, error) {
 		return schemaSummary{}, errs.NewInternal(fmt.Sprintf("el esquema embebido %q no es JSON válido: %v", name, err))
 	}
 	return schemaSummary{Name: name, Title: doc.Title, Description: doc.Description}, nil
+}
+
+// descriptionColumnWidth is the maximum width of the description column of
+// the schema list; longer descriptions are cut at a word boundary. The
+// truncation is presentation only: --json and `schema <nombre>` keep the
+// full text.
+const descriptionColumnWidth = 72
+
+// renderSchemaListText renders `trafico schema` for a human (FORMAT-01): a
+// heading with the schema count and one aligned row per published schema
+// with its name, title and a short description, closed by the attribution
+// line (ARRANQUE section 2.1). No ANSI (ARRANQUE section 6.1).
+func renderSchemaListText(w io.Writer, v any) error {
+	response, ok := v.(schemaListResponse)
+	if !ok {
+		return errs.NewInternal("el render de texto de schema recibió una respuesta de otro tipo")
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Esquemas publicados (%d):\n\n", len(response.Schemas))
+	nameWidth, titleWidth := 0, 0
+	for _, schema := range response.Schemas {
+		if l := len(schema.Name); l > nameWidth {
+			nameWidth = l
+		}
+		if l := len([]rune(schema.Title)); l > titleWidth {
+			titleWidth = l
+		}
+	}
+	for _, schema := range response.Schemas {
+		fmt.Fprintf(&b, "  %-*s  %-*s  %s\n",
+			nameWidth, schema.Name,
+			titleWidth, schema.Title,
+			shortDescription(schema.Description))
+	}
+	b.WriteString("\n" + attributionClosingLine)
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
+// renderSchemaDocumentText renders `trafico schema <nombre>` for a human
+// (FORMAT-01): the schema document is a document, not a table, so the
+// render is a heading naming the schema plus the JSON Schema itself as
+// formatted JSON, closed by the attribution line (ARRANQUE section 2.1).
+func renderSchemaDocumentText(w io.Writer, v any) error {
+	response, ok := v.(schemaDocumentResponse)
+	if !ok {
+		return errs.NewInternal("el render de texto del documento de esquema recibió una respuesta de otro tipo")
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Esquema: %s\n", response.Name)
+	var doc struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(response.Schema, &doc); err != nil {
+		return errs.NewInternal(fmt.Sprintf("el esquema embebido %q no es JSON válido: %v", response.Name, err))
+	}
+	if doc.Title != "" {
+		b.WriteString("\n" + doc.Title + "\n")
+	}
+	if doc.Description != "" {
+		b.WriteString(doc.Description + "\n")
+	}
+	var formatted bytes.Buffer
+	if err := json.Indent(&formatted, response.Schema, "", "  "); err != nil {
+		return errs.NewInternal(fmt.Sprintf("el esquema embebido %q no es JSON válido: %v", response.Name, err))
+	}
+	b.WriteString("\n" + formatted.String() + "\n")
+	b.WriteString("\n" + attributionClosingLine)
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
+// shortDescription cuts a schema description to the description column
+// width at a word boundary, ending with an ellipsis when it truncates. It
+// never adds text: the ellipsis only marks the cut.
+func shortDescription(description string) string {
+	runes := []rune(strings.TrimSpace(description))
+	if len(runes) <= descriptionColumnWidth {
+		return string(runes)
+	}
+	cut := descriptionColumnWidth
+	for cut > 0 && !unicode.IsSpace(runes[cut-1]) {
+		cut--
+	}
+	if cut == 0 {
+		cut = descriptionColumnWidth
+	}
+	return string(runes[:cut]) + "…"
 }

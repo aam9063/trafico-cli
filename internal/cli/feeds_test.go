@@ -94,6 +94,19 @@ func runCLI(t *testing.T, args ...string) (errs.ExitCode, *bytes.Buffer, *bytes.
 	return code, stdout, stderr
 }
 
+// runCLIDefaultFormat executes the command with no format flag at all, so
+// the human-readable text default of FORMAT-01 applies. runCLI cannot do
+// this: it appends --json when the invocation picks no format itself.
+func runCLIDefaultFormat(t *testing.T, args ...string) (errs.ExitCode, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	root := NewRootCommand()
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	code := executeRoot(root, args)
+	return code, stdout, stderr
+}
+
 // hasFormatFlag reports whether the invocation already picks a format.
 func hasFormatFlag(args []string) bool {
 	for _, arg := range args {

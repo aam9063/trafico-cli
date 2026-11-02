@@ -106,6 +106,99 @@ func TestSkillsGetOutputsTheFullRecipe(t *testing.T) {
 	}
 }
 
+// TestSkillsListTextRendersOneRowPerRecipe pins the human-readable default
+// of `trafico skills` (FORMAT-01): one aligned row per recipe with its
+// identifier and one-line purpose, never the indented-JSON fallback.
+func TestSkillsListTextRendersOneRowPerRecipe(t *testing.T) {
+	setCLIEnv(t)
+
+	code, stdout, stderr := runCLIDefaultFormat(t, "skills")
+
+	if code != errs.ExitSuccess {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	if strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Fatalf("the text output must not be the JSON fallback: %.120s", out)
+	}
+	if !strings.Contains(out, "Recetas para agentes (4):") {
+		t.Errorf("the heading must announce the four recipes, got %.120s", out)
+	}
+	previous := -1
+	for _, id := range expectedRecipeIDs {
+		line := rowLine(out, id)
+		if line < 0 {
+			t.Errorf("the text output carries no row for the recipe %q: %q", id, out)
+			continue
+		}
+		if previous >= 0 && line <= previous {
+			t.Errorf("the row of %q is not below the previous row in the list", id)
+		}
+		previous = line
+	}
+	for _, id := range expectedRecipeIDs {
+		recipe, ok := agentdocs.Get(id)
+		if !ok || recipe.Summary == "" {
+			continue
+		}
+		if !strings.Contains(out, recipe.Summary) {
+			t.Errorf("the row of %q misses its one-line purpose %q", id, recipe.Summary)
+		}
+	}
+	if !strings.HasSuffix(out, "Fuente: DGT (CC BY)\n") {
+		t.Errorf("the text output must end with the attribution line, got %q", out)
+	}
+}
+
+// rowLine returns the index of the line that starts the row of the recipe
+// id (two spaces of indent, then the identifier), or -1 when absent.
+func rowLine(out, id string) int {
+	for i, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "  "+id) {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestSkillsGetTextRendersLabelledFields pins the human-readable default of
+// `trafico skills get <receta>` (FORMAT-01): labelled fields, the exact
+// command on its own separable lines, never the indented-JSON fallback.
+func TestSkillsGetTextRendersLabelledFields(t *testing.T) {
+	setCLIEnv(t)
+
+	code, stdout, stderr := runCLIDefaultFormat(t, "skills", "get", "mi-ruta")
+
+	if code != errs.ExitSuccess {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	if strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Fatalf("the text output must not be the JSON fallback: %.120s", out)
+	}
+	recipe, ok := agentdocs.Get("mi-ruta")
+	if !ok {
+		t.Fatal("the embedded recipes lost mi-ruta")
+	}
+	for _, want := range []string{
+		"Receta: mi-ruta",
+		"Resumen: " + recipe.Summary,
+		"Comando:",
+		"  " + strings.Join(recipe.Command, " "),
+		"Responde a:",
+		"Cómo leer la salida:",
+		recipe.Answers,
+		recipe.Reading,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the text output misses %q; output:\n%s", want, out)
+		}
+	}
+	if !strings.HasSuffix(out, "Fuente: DGT (CC BY)\n") {
+		t.Errorf("the text output must end with the attribution line, got %q", out)
+	}
+}
+
 // TestSkillsGetUnknownRecipeIsUsage pins ARRANQUE §6.3 via ODD ola-5-agentes
 // S6: an unknown recipe id is a usage error (exit 2), never an empty list
 // with exit 0.
