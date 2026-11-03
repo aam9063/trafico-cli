@@ -44,7 +44,30 @@ That gap is the whole point of this tool.
 
 ## Install
 
-No release is published yet. Build from source:
+One line on Linux and macOS — the script picks the right release asset and verifies its SHA-256
+against the published `checksums.txt` before unpacking anything:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aam9063/trafico-cli/dev/install.sh | sh
+```
+
+The binary lands in `${TRAFICO_INSTALL_DIR:-$HOME/.local/bin}` (created if needed) and the script
+prints the exact `PATH` line if that directory is not already on it. It is safe to re-run:
+installing over an existing binary replaces it.
+
+```bash
+# Install a specific release instead of the latest one
+TRAFICO_VERSION=v0.1.0 sh install.sh
+
+# Install somewhere else
+TRAFICO_INSTALL_DIR=/usr/local/bin sh install.sh
+```
+
+**Windows:** the installer is POSIX-only on purpose. Download `trafico_<version>_windows_<arch>.zip`
+from the [releases page](https://github.com/aam9063/trafico-cli/releases) and put `trafico.exe` on
+your `PATH`.
+
+Build from source instead:
 
 ```bash
 git clone https://github.com/aam9063/trafico-cli.git
@@ -242,7 +265,8 @@ Every response carries the `attribution` block, and the human-readable output en
 
 This data is normalised and filtered by this tool; the output is not the DGT's original document.
 See [`docs/feeds.md`](docs/feeds.md) for how each feed was measured and what it does and does not
-contain.
+contain, and [`docs/cli-spec.md`](docs/cli-spec.md) for the complete command reference — that one is
+generated from the binary, and a test fails when it drifts.
 
 **This is not an official tool.** It is an unaffiliated client. Do not use it as a substitute for
 official DGT channels or for the real road signs. The DGT does not endorse, sponsor or maintain this

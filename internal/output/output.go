@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"time"
 )
 
@@ -120,32 +119,6 @@ func writePretty(w io.Writer, v any) error {
 	}
 	_, err = io.WriteString(w, "Fuente: DGT (CC BY)\n")
 	return err
-}
-
-// WriteLines emits items as JSONL (one compact JSON value per line, no
-// envelope), for commands that stream results.
-func WriteLines(w io.Writer, items []any) error {
-	enc := json.NewEncoder(w)
-	for _, item := range items {
-		if err := enc.Encode(item); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// IsTTY reports whether w is a character device (an interactive terminal).
-// It is used to decide whether pretty output and stderr diagnostics apply.
-func IsTTY(w io.Writer) bool {
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
 }
 
 // Diag writes a diagnostic line to w, which callers pass as os.Stderr, so

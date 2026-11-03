@@ -127,5 +127,5 @@ func writeFeedsResponse(cmd *cobra.Command, list []app.FeedStatus, fetched bool)
 		Feeds:    list,
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderFeedsText})
 }

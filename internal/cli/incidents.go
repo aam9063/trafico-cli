@@ -112,7 +112,7 @@ func writeIncidentsResponse(cmd *cobra.Command, response app.IncidentsResponse) 
 		output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderIncidentsText})
 }
 
 // parseIncidentCriteria translates the §5.2 flags into the application

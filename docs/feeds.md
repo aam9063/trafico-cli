@@ -401,9 +401,26 @@ loc:predefinedLocationReference id="HUELVA_N-433_71400.0" version="20250721"
   inventar un dato que la fuente no da.
 
 El dataset de tramos de riesgo para **motocicletas** (`tramosriesgomotos`) comparte la misma forma
-(97 tramos) y no está en el backlog: no hay comando para él. Como el tipo de payload es idéntico, la
-guarda de identidad de TEFIVA exige además que algún id encaje en `PROVINCIA_CARRETERA_METROS`; ese
-patrón no se ha verificado contra el feed de motos, que no se ha medido.
+(97 tramos) y no está en el backlog: no hay comando para él. Medido contra el payload real: es el
+mismo `d2:payload` v3, el mismo tipo `PredefinedLocationsPublication`, las mismas referencias
+`loc:PredefinedLocation` y sus ids encajan en `PROVINCIA_CARRETERA_METROS` igual que los de TEFIVA
+(p. ej. `Las Palmas_GC-240_1500.0`). **No hay discriminador estructural**: ni raíz, ni tipo,
+ni `xsi:type`, ni forma de las referencias, ni patrón de ids. La única señal medida que difiere es
+la prosa congelada de `com:feedDescription`:
+
+```
+tefiva: "Publicación TEFIVA: Tramos con especial frecuencia de incidentes viales con implicación
+de animales en la RCE"
+motos:  "Publicación de los tramos de elevado riesgo para motoristas"
+```
+
+Por eso la guarda de identidad de TEFIVA exige que la descripción nombre `TEFIVA`
+(case-insensitive, y nada más: palabras genéricas como "tramos" o "animales" no valen, porque la
+descripción de motos las usa también), y que el elemento exista: un payload sin `feedDescription`
+se rechaza. Es un emparejamiento de prosa, no de estructura, y es una fragilidad conocida: si la
+DGT reescribiera la descripción y quitara la marca, el parser rechazaría un feed legítimo de TEFIVA
+(`feed_changed`, exit 7) en lugar de aceptar en silencio un feed ajeno como tramos de animales
+(exit 0). Fallar cerrado es la dirección elegida.
 
 ---
 

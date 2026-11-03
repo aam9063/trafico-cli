@@ -144,7 +144,7 @@ func newRouteShowCommand() *cobra.Command {
 						Route:    route,
 					}
 					pretty := prettyFor(cmd)
-					return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+					return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderRouteDetailText})
 				}
 			}
 			return errs.NewNotFound(fmt.Sprintf("no existe la ruta %q", args[0]))
@@ -230,7 +230,7 @@ func newRouteCheckCommand() *cobra.Command {
 				output.Diag(cmd.ErrOrStderr(), "%s", response.Warning)
 			}
 			pretty := prettyFor(cmd)
-			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+			return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderRouteCheckText})
 		},
 	}
 	cmd.Flags().Bool("signs", false, "incluye los paneles de cada tramo (una descarga más)")
@@ -249,5 +249,5 @@ func writeRoutesResponse(cmd *cobra.Command, routes []app.RouteInfo) error {
 		Routes:   routes,
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderRoutesText})
 }

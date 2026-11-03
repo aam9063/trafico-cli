@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<d2:payload xmlns:d2="http://datex2.eu/schema/3/d2Payload" xsi:type="loc:PredefinedLocationsPublication" lang="es" modelBaseVersion="3" xmlns:com="http://datex2.eu/schema/3/common" xmlns:tro="http://datex2.eu/schema/3/trafficRegulation" xmlns:loc="http://datex2.eu/schema/3/locationReferencing" xmlns:roa="http://datex2.eu/schema/3/roadTrafficData" xmlns:egi="http://datex2.eu/schema/3/energyInfrastructure" xmlns:fac="http://datex2.eu/schema/3/facilities" xmlns:comx="http://datex2.eu/schema/3/commonExtension" xmlns:locx="http://datex2.eu/schema/3/locationExtension" xmlns:vms="http://datex2.eu/schema/3/vms" xmlns:sit="http://datex2.eu/schema/3/situation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <com:feedDescription>
+        <com:values>
+            <com:value lang="es">Publicación de los tramos de elevado riesgo para motoristas</com:value>
+        </com:values>
+    </com:feedDescription>
+    <com:publicationTime>2022-05-17T09:40:10.833+02:00</com:publicationTime>
+    <com:publicationCreator>
+        <com:country>ES</com:country>
+        <com:nationalIdentifier>dgt</com:nationalIdentifier>
+    </com:publicationCreator>
+    <loc:headerInformation>
+        <com:informationStatus>real</com:informationStatus>
+    </loc:headerInformation>
+    <loc:predefinedLocationReference xsi:type="loc:PredefinedLocation" id="Las Palmas_GC-240_1500.0" version="20220517">
+        <loc:location xsi:type="loc:SingleRoadLinearLocation">
+            <loc:supplementaryPositionalDescription>
+                <loc:lengthAffected>2324.41</loc:lengthAffected>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegLinearLocation>
+                <loc:tpegDirection>bothWays</loc:tpegDirection>
+                <loc:tpegLinearLocationType>segment</loc:tpegLinearLocationType>
+                <loc:to xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>28.08877</loc:latitude>
+                        <loc:longitude>-15.55897</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GC-240</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">Las Palmas</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GC-240</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:to>
+                <loc:from xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>28.09159</loc:latitude>
+                        <loc:longitude>-15.54661</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GC-240</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">Las Palmas</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GC-240</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:from>
+            </loc:tpegLinearLocation>
+            <loc:linearWithinLinearElement>
+                <loc:administrativeAreaOfLinearSection>
+                    <com:values>
+                        <com:value lang="es">Las Palmas</com:value>
+                    </com:values>
+                </loc:administrativeAreaOfLinearSection>
+                <loc:directionRelativeOnLinearSection>both</loc:directionRelativeOnLinearSection>
+                <loc:linearElement>
+                    <loc:roadName>
+                        <com:values>
+                            <com:value lang="es">GC-240</com:value>
+                        </com:values>
+                    </loc:roadName>
+                </loc:linearElement>
+                <loc:fromPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>1500.0</loc:distanceAlong>
+                </loc:fromPoint>
+                <loc:toPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>3700.0</loc:distanceAlong>
+                </loc:toPoint>
+            </loc:linearWithinLinearElement>
+        </loc:location>
+    </loc:predefinedLocationReference>
+<loc:predefinedLocationReference xsi:type="loc:PredefinedLocation" id="Las Palmas_GC-331_530.0" version="20220517">
+        <loc:location xsi:type="loc:SingleRoadLinearLocation">
+            <loc:supplementaryPositionalDescription>
+                <loc:lengthAffected>2414.88</loc:lengthAffected>
+            </loc:supplementaryPositionalDescription>
+            <loc:tpegLinearLocation>
+                <loc:tpegDirection>bothWays</loc:tpegDirection>
+                <loc:tpegLinearLocationType>segment</loc:tpegLinearLocationType>
+                <loc:to xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>28.13793</loc:latitude>
+                        <loc:longitude>-15.5347</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GC-331</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">Las Palmas</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GC-331</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:to>
+                <loc:from xsi:type="loc:TpegJunction">
+                    <loc:pointCoordinates>
+                        <loc:latitude>28.14446</loc:latitude>
+                        <loc:longitude>-15.53646</loc:longitude>
+                    </loc:pointCoordinates>
+                    <loc:ilc>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GC-331</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegIlcPointDescriptorType>tpegIlcName1</loc:tpegIlcPointDescriptorType>
+                    </loc:ilc>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">Las Palmas</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>administrativeAreaName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                    <loc:otherName>
+                        <loc:descriptor>
+                            <com:values>
+                                <com:value lang="es">GC-331</com:value>
+                            </com:values>
+                        </loc:descriptor>
+                        <loc:tpegOtherPointDescriptorType>linkName</loc:tpegOtherPointDescriptorType>
+                    </loc:otherName>
+                </loc:from>
+            </loc:tpegLinearLocation>
+            <loc:linearWithinLinearElement>
+                <loc:administrativeAreaOfLinearSection>
+                    <com:values>
+                        <com:value lang="es">Las Palmas</com:value>
+                    </com:values>
+                </loc:administrativeAreaOfLinearSection>
+                <loc:directionRelativeOnLinearSection>both</loc:directionRelativeOnLinearSection>
+                <loc:linearElement>
+                    <loc:roadName>
+                        <com:values>
+                            <com:value lang="es">GC-331</com:value>
+                        </com:values>
+                    </loc:roadName>
+                </loc:linearElement>
+                <loc:fromPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>530.0</loc:distanceAlong>
+                </loc:fromPoint>
+                <loc:toPoint xsi:type="loc:DistanceFromLinearElementStart">
+                    <loc:distanceAlong>2890.0</loc:distanceAlong>
+                </loc:toPoint>
+            </loc:linearWithinLinearElement>
+        </loc:location>
+    </loc:predefinedLocationReference>
+</d2:payload>

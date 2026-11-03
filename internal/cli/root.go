@@ -40,6 +40,7 @@ func NewRootCommand() *cobra.Command {
 		return errs.NewUsage(err.Error())
 	})
 	root.AddCommand(newVersionCommand())
+	root.AddCommand(newDocsCommand())
 	root.AddCommand(newIncidentsCommand())
 	root.AddCommand(newSignsCommand())
 	root.AddCommand(newRadarsCommand())
@@ -49,8 +50,16 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newFeedsCommand())
 	root.AddCommand(newDoctorCommand())
 	root.AddCommand(newWatchCommand())
+	root.AddCommand(newSkillsCommand())
+	root.AddCommand(newSchemaCommand())
 	return root
 }
+
+// attributionClosingLine is the mandatory CC BY closing line of every
+// human-readable render (ARRANQUE section 2.1); the PrettyFunc contract of
+// internal/output requires it, and internal/watch reuses the same wording
+// for notifications.
+const attributionClosingLine = "Fuente: DGT (CC BY)\n"
 
 // addPrettyFlag registers the output-format flags on a command that renders an
 // envelope (ARRANQUE section 6.1). It is deliberately not a root persistent
