@@ -72,20 +72,15 @@ func renderRadarsText(w io.Writer, v any) error {
 		b.WriteString("(sin resultados)\n")
 	}
 	table := newTextTable(false, false, false, false, true)
-	truncated := 0
 	for _, radar := range response.Radars {
-		// The road kind is counted as truncated but rendered in full: the
-		// pre-split renderer truncated a copy and printed the column value
-		// (kinds[i]) unchanged. The quirk is preserved byte for byte here;
-		// fixing it is a user-visible change for a follow-up task.
-		if kind := optionalToDash(radar.Singularity); len([]rune(kind)) > textColumnWidth {
-			truncated++
-		}
 		table.addRow(radar.Road, formatPK(radar.PK), optionalToDash(radar.Province),
 			optionalToDash(radar.Singularity), optionalToDash(radar.DirectionLabel))
 	}
-	// The destination label, the free-text column, truncates and counts.
-	truncated += table.writeTo(&b, "  ", nil)
+	// Only the destination label is the free-text column, and only it is cut.
+	// The road kind used to be counted as truncated while being printed in
+	// full, so the note claimed a truncation that never happened; the counter
+	// now comes from what the table actually cuts.
+	truncated := table.writeTo(&b, "  ", nil)
 	b.WriteString(publishedNote(response.Meta))
 	b.WriteString(truncationNote(truncated))
 	b.WriteString("\n" + attributionClosingLine)
