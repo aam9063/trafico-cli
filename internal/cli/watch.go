@@ -80,7 +80,10 @@ type watchResponse struct {
 }
 
 // watchCheckResponse is the JSON contract of `trafico watch check <name>`:
-// what a real run would notify (events counts and kinds), or skipped.
+// what a real run would notify (events counts and kinds), or skipped. The
+// unexported eventsDetail carries the full events for the text renderer
+// only: encoding/json never marshals unexported fields, so --json stays
+// byte for byte the pinned contract.
 type watchCheckResponse struct {
 	output.Envelope
 	Watch    string   `json:"watch"`
@@ -88,6 +91,8 @@ type watchCheckResponse struct {
 	Baseline bool     `json:"baseline"`
 	Events   int      `json:"events"`
 	Kinds    []string `json:"kinds,omitempty"`
+
+	eventsDetail []store.Event
 }
 
 // watchRunResponse is the JSON contract of `trafico watch run`: one entry
@@ -172,10 +177,14 @@ type serviceInfo struct {
 	Files     []string `json:"files"`
 }
 
-// serviceResponse is the JSON contract of the `watch service` commands.
+// serviceResponse is the JSON contract of the `watch service` commands. The
+// unexported verb names the subcommand that produced it (install, uninstall
+// or status) for the text renderer; it never reaches the JSON output.
 type serviceResponse struct {
 	output.Envelope
 	Service serviceInfo `json:"service"`
+
+	verb string
 }
 
 // newWatchServiceCommand builds `trafico watch service` with its install,
@@ -251,7 +260,7 @@ func runWatchServiceInstall(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return translateServiceError(err)
 	}
-	return writeServiceResponse(cmd, serviceInfoView(platform, st, written))
+	return writeServiceResponse(cmd, serviceInfoView(platform, st, written), "install")
 }
 
 // newWatchServiceUninstallCommand builds `trafico watch service uninstall`.
@@ -289,7 +298,7 @@ func runWatchServiceUninstall(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return translateServiceError(err)
 	}
-	return writeServiceResponse(cmd, serviceInfoView(platform, st, removed))
+	return writeServiceResponse(cmd, serviceInfoView(platform, st, removed), "uninstall")
 }
 
 // newWatchServiceStatusCommand builds `trafico watch service status`.
@@ -330,7 +339,7 @@ func runWatchServiceStatus(cmd *cobra.Command, args []string) error {
 	} else {
 		info.Message = "no instalado"
 	}
-	return writeServiceResponse(cmd, info)
+	return writeServiceResponse(cmd, info, "status")
 }
 
 // parseServiceInterval reads --interval: empty means the watch default (5
@@ -391,17 +400,20 @@ func serviceInfoView(platform service.Platform, st service.StatusReport, files [
 	return info
 }
 
-// writeServiceResponse renders the service envelope. The service commands
-// touch no feed, so meta carries no published_at (nothing was fetched and
-// nothing can be stale).
-func writeServiceResponse(cmd *cobra.Command, info serviceInfo) error {
+// writeServiceResponse renders the service envelope. verb is the
+// subcommand that produced the report (install, uninstall or status); the
+// text renderer needs it to pick the confirmation or the status wording. The
+// service commands touch no feed, so meta carries no published_at (nothing
+// was fetched and nothing can be stale).
+func writeServiceResponse(cmd *cobra.Command, info serviceInfo, verb string) error {
 	meta := &output.Meta{FetchedAt: time.Now().UTC()}
 	response := serviceResponse{
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 		Service:  info,
+		verb:     verb,
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderWatchServiceText})
 }
 
 // newWatchAddCommand builds `trafico watch add <name> (route <ruta> |
@@ -759,15 +771,16 @@ func writeWatchCheckResponse(cmd *cobra.Command, report app.CheckReport) error {
 		meta = &output.Meta{FetchedAt: time.Now().UTC()}
 	}
 	response := watchCheckResponse{
-		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
-		Watch:    report.Name,
-		Skipped:  report.Skipped,
-		Baseline: report.Baseline,
-		Events:   len(report.Events),
-		Kinds:    eventKinds(report.Events),
+		Envelope:     output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
+		Watch:        report.Name,
+		Skipped:      report.Skipped,
+		Baseline:     report.Baseline,
+		Events:       len(report.Events),
+		Kinds:        eventKinds(report.Events),
+		eventsDetail: report.Events,
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderWatchCheckText})
 }
 
 // writeWatchRunResponse renders the run report: one entry per stored watch
@@ -804,7 +817,7 @@ func writeWatchRunResponse(cmd *cobra.Command, result app.RunAllResult) error {
 		Delivered: result.Delivered,
 	}
 	pretty := prettyFor(cmd)
-	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty})
+	return output.Write(cmd.OutOrStdout(), response, output.Options{Pretty: pretty, PrettyFunc: renderWatchRunText})
 }
 
 // eventKinds lists the kinds of the given events, in emission order.
