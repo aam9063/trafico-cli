@@ -39,6 +39,13 @@ jobs:
       - name: Check the suite before publishing
         run: bash scripts/check.sh --strict
 
+      # check.sh is the Go gate and does not run the installer harness, so a
+      # broken installer would ship silently: it downloads a binary, verifies
+      # its checksum and puts it on a PATH, and none of that is Go. The harness
+      # is offline by design (network calls stubbed), so it costs seconds.
+      - name: Check the installer before publishing
+        run: sh scripts/test-install.sh
+
       - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           version: '~> v2'
