@@ -50,6 +50,9 @@ type SectionsResponse struct {
 	output.Envelope
 	// Sections are the matching sections, never null in JSON.
 	Sections []model.Section `json:"sections"`
+	// Kind echoes the requested dataset so the text render can name it even
+	// when nothing matched. Render-only, never serialised.
+	Kind string `json:"-"`
 	// Warning is written to stderr by the CLI layer.
 	Warning string `json:"-"`
 }
@@ -135,6 +138,7 @@ func Sections(ctx context.Context, cfg *config.Config, fetcher *feeds.Fetcher, c
 	return SectionsResponse{
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(result.FetchedAt)),
 		Sections: matches,
+		Kind:     string(criteria.Kind),
 		Warning:  result.Warning,
 	}, nil
 }
