@@ -93,16 +93,17 @@ unset -f uname
 
 uname() { echo "MINGW64_NT-10.0-19045"; }
 eval "$(run_in_subshell detect_os)"
-expect_status "detect_os: Git Bash (MINGW) is rejected" "1" "$RC"
-case "$OUT" in
-  *"Descarga el .zip"*) pass "detect_os: Windows message points at the .zip assets" ;;
-  *) fail_test "detect_os: Windows message points at the .zip assets (got '$OUT')" ;;
-esac
+expect_eq "detect_os: Git Bash (MINGW) maps to windows" "windows" "$OUT"
+unset -f uname
+
+uname() { echo "MSYS_NT-10.0"; }
+eval "$(run_in_subshell detect_os)"
+expect_eq "detect_os: MSYS maps to windows" "windows" "$OUT"
 unset -f uname
 
 uname() { echo "CYGWIN_NT-10.0"; }
 eval "$(run_in_subshell detect_os)"
-expect_status "detect_os: Cygwin is rejected like Windows" "1" "$RC"
+expect_eq "detect_os: Cygwin maps to windows" "windows" "$OUT"
 unset -f uname
 
 uname() { echo "SunOS"; }
@@ -141,7 +142,13 @@ expect_eq "archive_for: darwin arm64 tar.gz" \
   "trafico_0.1.0_darwin_arm64.tar.gz" \
   "$(archive_for v0.1.0 darwin arm64)"
 eval "$(run_in_subshell archive_for v0.1.0 windows amd64)"
-expect_status "archive_for: windows is not a tar.gz target here" "1" "$RC"
+expect_eq "archive_for: windows uses the .zip asset" "trafico_0.1.0_windows_amd64.zip" "$OUT"
+
+eval "$(run_in_subshell binary_name_for windows)"
+expect_eq "binary_name_for: windows carries trafico.exe" "trafico.exe" "$OUT"
+
+eval "$(run_in_subshell binary_name_for linux)"
+expect_eq "binary_name_for: linux carries trafico" "trafico" "$OUT"
 
 # --- Latest-release tag parsing (network stubbed) ---------------------------
 
