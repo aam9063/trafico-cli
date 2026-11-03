@@ -1,3 +1,10 @@
+<a href="https://nan.builders/?ref=built-with-nan">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="https://nan.builders/badge/built-with-nan-light.svg">
+    <img width="266" src="https://nan.builders/badge/built-with-nan-dark.svg" alt="Built with NaN">
+  </picture>
+</a>
+
 # trafico-cli
 
 **Spanish traffic data for agents: human-readable by default, one JSON document with `--json`, stable exit codes, no guessing.**
@@ -10,6 +17,8 @@ notifying a phone when something changes on it.
 [![Go 1.26+](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Data: CC BY](https://img.shields.io/badge/data-CC%20BY-lightgrey)](https://nap.dgt.es/)
+
+![demo](assets/demo.gif)
 
 ---
 
