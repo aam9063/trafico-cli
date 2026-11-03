@@ -367,6 +367,10 @@ Flags:
 
 Print the trafico version
 
+Flags:
+
+- `--json` — emite versión, commit y fecha de compilación en JSON
+
 ### `trafico watch`
 
 Manage saved watches, check them and run the vigilance cycle
