@@ -307,3 +307,5 @@ under [`odd/reviews/`](odd/reviews/), and CI fails without it.
 
 Code is [MIT](LICENSE). The DGT data is CC BY and keeps its own licence — see `LICENSE` for the
 separation.
+
+[![Built with NaN](https://nan.builders/badge/built-with-nan-compact.svg)](https://nan.builders/?ref=built-with-nan)
