@@ -31,15 +31,14 @@ info() {
 }
 
 # detect_os maps the running system to the GoReleaser GOOS value.
-# Windows is deliberately rejected with a plain message: this POSIX installer
-# does not handle the .zip assets that GoReleaser publishes for windows.
+# Git Bash, MSYS2 and Cygwin report MINGW*/MSYS*/CYGWIN*; that is a POSIX shell
+# on Windows, which is enough to run this installer even though the release
+# publishes a .zip rather than a tarball.
 detect_os() {
   case "$(uname -s)" in
     Linux) echo linux ;;
     Darwin) echo darwin ;;
-    MINGW* | MSYS* | CYGWIN* | Windows_NT)
-      die "Windows no está soportado por este instalador. Descarga el .zip de tu arquitectura desde ${BASE_URL}/latest y coloca trafico.exe en tu PATH." 1
-      ;;
+    MINGW* | MSYS* | CYGWIN* | Windows_NT) echo windows ;;
     *)
       die "Sistema operativo no soportado: $(uname -s). Descarga el archivo adecuado desde ${BASE_URL}/latest." 1
       ;;
@@ -65,11 +64,21 @@ archive_for() {
   arch="$3"
   case "$os" in
     linux | darwin) ext=tar.gz ;;
+    windows) ext=zip ;;
     *)
       die "Extensión de archivo desconocida para $os." 1
       ;;
   esac
   echo "trafico_${version#v}_${os}_${arch}.${ext}"
+}
+
+# binary_name_for prints the executable name inside the archive: the Windows
+# assets carry trafico.exe.
+binary_name_for() {
+  case "$1" in
+    windows) echo trafico.exe ;;
+    *) echo trafico ;;
+  esac
 }
 
 # download fetches url into dest with whichever of curl/wget exists.
@@ -202,23 +211,35 @@ main() {
   info "Suma verificada"
 
   mkdir -p "$tmpdir/extract"
-  tar -xzf "$tmpdir/$asset" -C "$tmpdir/extract" ||
-    die "No se pudo desempaquetar $asset." 1
+  case "$asset" in
+    *.zip)
+      command -v unzip >/dev/null 2>&1 ||
+        die "Falta 'unzip' para desempaquetar $asset. Instálalo o descarga el .zip a mano desde ${BASE_URL}/latest." 1
+      unzip -q "$tmpdir/$asset" -d "$tmpdir/extract" ||
+        die "No se pudo desempaquetar $asset." 1
+      ;;
+    *)
+      tar -xzf "$tmpdir/$asset" -C "$tmpdir/extract" ||
+        die "No se pudo desempaquetar $asset." 1
+      ;;
+  esac
 
-  binary="$tmpdir/extract/trafico"
+  bin_name=$(binary_name_for "$os")
+  binary="$tmpdir/extract/$bin_name"
   [ -f "$binary" ] ||
-    die "El archivo $asset no contiene el binario trafico; abortando." 1
+    die "El archivo $asset no contiene el binario $bin_name; abortando." 1
 
   mkdir -p "$install_dir"
-  if [ -e "$install_dir/trafico" ]; then
-    info "Ya existía una instalación en $install_dir/trafico; reemplazándola."
+  target="$install_dir/$bin_name"
+  if [ -e "$target" ]; then
+    info "Ya existía una instalación en $target; reemplazándola."
   fi
   # Copy-then-rename so a re-run over a running binary is safe.
-  cp "$binary" "$install_dir/trafico.tmp.$$" &&
-    mv "$install_dir/trafico.tmp.$$" "$install_dir/trafico"
-  chmod 0755 "$install_dir/trafico"
+  cp "$binary" "$target.tmp.$$" &&
+    mv "$target.tmp.$$" "$target"
+  chmod 0755 "$target"
 
-  info "Instalado $version en $install_dir/trafico"
+  info "Instalado $version en $target"
   info "Ejecuta 'trafico version' para comprobarlo."
   path_hint "$install_dir"
 }
