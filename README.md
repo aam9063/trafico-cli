@@ -265,7 +265,8 @@ Every response carries the `attribution` block, and the human-readable output en
 
 This data is normalised and filtered by this tool; the output is not the DGT's original document.
 See [`docs/feeds.md`](docs/feeds.md) for how each feed was measured and what it does and does not
-contain.
+contain, and [`docs/cli-spec.md`](docs/cli-spec.md) for the complete command reference — that one is
+generated from the binary, and a test fails when it drifts.
 
 **This is not an official tool.** It is an unaffiliated client. Do not use it as a substitute for
 official DGT channels or for the real road signs. The DGT does not endorse, sponsor or maintain this
