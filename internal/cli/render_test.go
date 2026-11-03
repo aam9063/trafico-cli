@@ -1,13 +1,19 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/aam9063/trafico-cli/internal/app"
 	"github.com/aam9063/trafico-cli/internal/errs"
+	"github.com/aam9063/trafico-cli/internal/model"
 )
+
+// floatPtr is a literal helper for the pointer-valued model fields.
+func floatPtr(v float64) *float64 { return &v }
 
 // assertTextRender pins the two FORMAT-02 rules every human-readable render
 // must honour: the output is never the indented-JSON fallback (the first
@@ -370,5 +376,64 @@ func TestTextRenderTruncatesAndCounts(t *testing.T) {
 	}
 	if strings.Contains(out, longURL) {
 		t.Errorf("the long URL must be truncated, not shown in full, got %.200s", out)
+	}
+}
+
+// TestFormatPKIntervalTakesValuesNotPointers pins the shape of the bounds:
+// routeCheckPK and the watch road target both store float64, so this call
+// site can never be handed a nil. If either type becomes a pointer this test
+// stops compiling, which is the point -- a native review once reported the
+// route check call site as a nil dereference and it was not.
+func TestFormatPKIntervalTakesValuesNotPointers(t *testing.T) {
+	if got, want := formatPKInterval(40, 55), "40-55"; got != want {
+		t.Errorf("formatPKInterval(40, 55) = %q, want %q", got, want)
+	}
+	if got, want := formatPKInterval(0, 2.16), "0-2.16"; got != want {
+		t.Errorf("formatPKInterval(0, 2.16) = %q, want %q", got, want)
+	}
+}
+
+// The road kind used to be counted as truncated while being printed in full,
+// so the note claimed a truncation that never happened. Only the destination
+// label is the free-text column. Nothing pinned it because no fixture has a
+// kind longer than the column.
+func TestRadarsTextDoesNotCountAnUncutKind(t *testing.T) {
+	longKind := strings.Repeat("tipo", 40) // 160 runes, well past the column
+	response := app.RadarsResponse{Radars: []model.Radar{{
+		Road:        "N-433",
+		PK:          &model.PK{From: floatPtr(71.4), To: floatPtr(73.1)},
+		Singularity: &longKind,
+	}}}
+	var buf bytes.Buffer
+	if err := renderRadarsText(&buf, response); err != nil {
+		t.Fatalf("renderRadarsText: %v", err)
+	}
+	out := buf.String()
+	assertTextRender(t, out)
+	if !strings.Contains(out, longKind) {
+		t.Error("the road kind is printed in full by this renderer; it must not be cut")
+	}
+	if strings.Contains(out, "truncada") {
+		t.Errorf("the note claims a truncation that did not happen:\n%s", out)
+	}
+}
+
+// The counterpart: the destination label IS the free-text column, so a long
+// one is cut and counted. Without this, the test above would pass on a
+// renderer that simply never truncates anything.
+func TestRadarsTextCountsACutDestinationLabel(t *testing.T) {
+	longLabel := strings.Repeat("destino", 30) // 210 runes
+	response := app.RadarsResponse{Radars: []model.Radar{
+		{Road: "N-433", PK: &model.PK{From: floatPtr(71.4), To: floatPtr(73.1)}, DirectionLabel: &longLabel},
+		{Road: "N-433", PK: &model.PK{From: floatPtr(80), To: floatPtr(90)}, DirectionLabel: &longLabel},
+	}}
+	var buf bytes.Buffer
+	if err := renderRadarsText(&buf, response); err != nil {
+		t.Fatalf("renderRadarsText: %v", err)
+	}
+	out := buf.String()
+	assertTextRender(t, out)
+	if !strings.Contains(out, "2 descripciones truncadas") {
+		t.Errorf("two long destination labels must be counted:\n%s", out)
 	}
 }
