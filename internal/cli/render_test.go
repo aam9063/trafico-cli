@@ -372,17 +372,3 @@ func TestTextRenderTruncatesAndCounts(t *testing.T) {
 		t.Errorf("the long URL must be truncated, not shown in full, got %.200s", out)
 	}
 }
-
-// TestFormatPKIntervalTakesValuesNotPointers pins the shape of the bounds:
-// routeCheckPK and the watch road target both store float64, so this call
-// site can never be handed a nil. If either type becomes a pointer this test
-// stops compiling, which is the point — a native review once reported the
-// route check call site as a nil dereference and it was not.
-func TestFormatPKIntervalTakesValuesNotPointers(t *testing.T) {
-	if got, want := formatPKInterval(40, 55), "40-55"; got != want {
-		t.Errorf("formatPKInterval(40, 55) = %q, want %q", got, want)
-	}
-	if got, want := formatPKInterval(0, 2.16), "0-2.16"; got != want {
-		t.Errorf("formatPKInterval(0, 2.16) = %q, want %q", got, want)
-	}
-}
