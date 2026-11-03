@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -745,8 +746,23 @@ func TestWithWatchLockStaleTakeoverIsExclusive(t *testing.T) {
 		close(start)
 		wg.Wait()
 
-		if len(intervals) != 1 {
-			t.Fatalf("round %d: %d concurrent cycles executed the critical section, want exactly 1", round, len(intervals))
+		// The guarantee is exclusivity, not scarcity: the lock promises that
+		// two cycles never run at the same time, not that only one ever runs.
+		// A worker that arrives after the winner has finished acquires the
+		// lock legitimately and runs its own cycle, which is correct
+		// behaviour -- and on a slower scheduler (the macOS runner) that is
+		// exactly what happens. Counting executions tested the wrong thing.
+		if len(intervals) == 0 {
+			t.Fatalf("round %d: no worker executed the critical section", round)
+		}
+		sort.Slice(intervals, func(i, j int) bool { return intervals[i].start.Before(intervals[j].start) })
+		for i := 1; i < len(intervals); i++ {
+			if intervals[i].start.Before(intervals[i-1].end) {
+				t.Fatalf("round %d: two cycles overlapped: [%s, %s] and [%s, %s]",
+					round,
+					intervals[i-1].start.Format(time.RFC3339Nano), intervals[i-1].end.Format(time.RFC3339Nano),
+					intervals[i].start.Format(time.RFC3339Nano), intervals[i].end.Format(time.RFC3339Nano))
+			}
 		}
 		for i, err := range failures {
 			if err == nil {
