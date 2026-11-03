@@ -395,10 +395,10 @@ func renderSectionsText(w io.Writer, v any) error {
 	if !ok {
 		return errs.NewInternal("el render de texto de sections recibió una respuesta de otro tipo")
 	}
-	kind := ""
-	if len(response.Sections) > 0 {
-		kind = response.Sections[0].Kind
-	}
+	// The kind comes from the response, not from the first match: an empty
+	// result has no first section to read it from and used to print
+	// "Tramos  (0):" with a double space and no dataset name.
+	kind := response.Kind
 	var b strings.Builder
 	fmt.Fprintf(&b, "Tramos %s (%d):\n\n", kind, len(response.Sections))
 	if len(response.Sections) == 0 {
@@ -954,7 +954,7 @@ func renderWatchServiceText(w io.Writer, v any) error {
 				fmt.Fprintf(&b, "  - %s\n", file)
 			}
 		}
-	default:
+	case "status":
 		switch {
 		case !info.Installed:
 			b.WriteString("Servicio de vigilancia no instalado. Instálalo con `trafico watch service install`.\n")

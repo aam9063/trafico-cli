@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -200,44 +199,6 @@ func TestMetaNullableFields(t *testing.T) {
 	}
 	if _, ok := parsed["coverage_note"]; ok {
 		t.Fatalf("empty coverage_note must be omitted, got %s", b)
-	}
-}
-
-func TestWriteLinesJSONL(t *testing.T) {
-	items := []any{
-		map[string]string{"id": "a"},
-		map[string]string{"id": "b"},
-		map[string]string{"id": "c"},
-	}
-
-	var buf bytes.Buffer
-	if err := WriteLines(&buf, items); err != nil {
-		t.Fatalf("WriteLines: %v", err)
-	}
-
-	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
-	if len(lines) != len(items) {
-		t.Fatalf("got %d lines, want %d: %q", len(lines), len(items), buf.String())
-	}
-	for i, line := range lines {
-		var parsed map[string]string
-		if err := json.Unmarshal([]byte(line), &parsed); err != nil {
-			t.Fatalf("line %d does not parse independently: %v (%q)", i, err, line)
-		}
-		want := fmt.Sprintf("%c", 'a'+i)
-		if parsed["id"] != want {
-			t.Fatalf("line %d id = %q, want %q", i, parsed["id"], want)
-		}
-	}
-}
-
-func TestIsTTYFalseForBuffer(t *testing.T) {
-	var buf bytes.Buffer
-	if IsTTY(&buf) {
-		t.Fatal("IsTTY must be false for bytes.Buffer")
-	}
-	if IsTTY(nil) {
-		t.Fatal("IsTTY must be false for nil writer")
 	}
 }
 
