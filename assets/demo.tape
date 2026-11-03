@@ -24,8 +24,13 @@ Set TypingSpeed 35ms
 # El binario vive en ~/.local/bin, que está en el PATH de bash pero no
 # necesariamente en el de PowerShell. Se prepara sin mostrarlo, junto con el
 # Clear-Host que borra el prompt inicial con la ruta del repo.
+#
+# La ruta se arma con $env:USERPROFILE y no con un nombre de usuario
+# escrito a mano: este archivo se commitea para que cualquiera pueda
+# regenerar la demo, y una ruta absoluta lo haria reproducible solo en
+# la maquina donde se grabo.
 Hide
-Type "$env:PATH += ';C:\Users\alber\.local\bin'"
+Type "$env:PATH += ';$env:USERPROFILE\.local\bin'"
 Enter
 Type "Clear-Host"
 Enter
