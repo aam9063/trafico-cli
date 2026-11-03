@@ -2,8 +2,10 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -56,5 +58,38 @@ func TestCLISpecOmitsHiddenCommands(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(spec), []byte("trafico incidents")) {
 		t.Error("the generated reference is missing a visible command")
+	}
+}
+
+// 'trafico version' prints the version and nothing else: it is what a script
+// compares and what a reader wants. The commit and the build date are still
+// available, behind --json, for a bug report.
+func TestVersionTextIsOnlyTheVersion(t *testing.T) {
+	code, stdout, _ := runCLIDefaultFormat(t, "version")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	got := strings.TrimSpace(stdout.String())
+	if got != version {
+		t.Errorf("stdout = %q, want %q and nothing else", got, version)
+	}
+	if strings.ContainsAny(got, "()") || strings.Contains(got, "built") {
+		t.Errorf("stdout = %q, want only the version", got)
+	}
+}
+
+func TestVersionJSONCarriesTheBuildDetail(t *testing.T) {
+	code, stdout, _ := runCLI(t, "version")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("version --json is not one JSON value: %v", err)
+	}
+	for _, key := range []string{"version", "commit", "build_date"} {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("version --json is missing %q", key)
+		}
 	}
 }

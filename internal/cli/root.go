@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/aam9063/trafico-cli/internal/errs"
+	"github.com/aam9063/trafico-cli/internal/output"
 
 	"github.com/spf13/cobra"
 )
@@ -120,19 +121,34 @@ func report(root *cobra.Command, err error) errs.ExitCode {
 }
 
 func newVersionCommand() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the trafico version",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			line := version
-			if commit != "" {
-				line += " (" + commit + ")"
+			// The text form is the version and nothing else: it is what a
+			// script compares and what a reader wants. The commit and the
+			// build date still matter for a bug report, so they live behind
+			// --json rather than in everyone's face.
+			if !asJSON {
+				fmt.Fprintln(cmd.OutOrStdout(), version)
+				return nil
 			}
-			if buildDate != "" {
-				line += " built " + buildDate
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), line)
-			return nil
+			return output.Write(cmd.OutOrStdout(), versionInfo{
+				Version:   version,
+				Commit:    commit,
+				BuildDate: buildDate,
+			}, output.Options{})
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emite versión, commit y fecha de compilación en JSON")
+	return cmd
+}
+
+// versionInfo is the machine-readable form of `trafico version --json`.
+type versionInfo struct {
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	BuildDate string `json:"build_date"`
 }
