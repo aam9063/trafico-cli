@@ -30,6 +30,7 @@ var (
 	colAccent = lipgloss.Color("212") // the selected row
 	colDim    = lipgloss.Color("243") // secondary text
 	colWarm   = lipgloss.Color("214") // severity, the one warm tone
+	colPanel  = lipgloss.Color("236") // the search field's background
 )
 
 var (
@@ -37,6 +38,7 @@ var (
 	// not carry a Border(): a bordered style wraps every fragment in its own
 	// box, which is exactly what broke the frame before.
 	styleBorder = lipgloss.NewStyle().Foreground(colFrame)
+	styleField  = lipgloss.NewStyle().Background(colPanel).Padding(0, 1)
 	styleTitle  = lipgloss.NewStyle().Foreground(colFrame).Bold(true)
 	styleDim    = lipgloss.NewStyle().Foreground(colDim)
 	styleWarm   = lipgloss.NewStyle().Foreground(colWarm)
@@ -268,28 +270,6 @@ func (m Model) View() string {
 	}
 	v := m.current
 
-	// The search line rides above the frame, like a prompt would. It only
-	// exists while typing: a filter already applied is told by the title.
-	above := ""
-	if m.typing {
-		cursor := ""
-		if m.typed == "" {
-			cursor = "▌" // left half block, the terminal cursor stand-in
-		}
-		prompt := styleDim.Render("Provincia: ") + styleTitle.Render(m.typed+cursor)
-		help := styleDim.Render("   enter aplica · esc cancela")
-		// The hint is the first thing to go in a narrow terminal; the prompt
-		// and what is being typed are the point.
-		if cells(prompt)+cells(help) <= m.width {
-			above = prompt + help
-		} else {
-			above = prompt
-		}
-		if cells(above) > m.width {
-			above = ansi.Truncate(above, m.width, "…")
-		}
-	}
-
 	// Body lines, one per row. Every block is split: the banner and the
 	// table are multi-line strings, and a multi-line block handed to the
 	// frame as one element would only get a border on its first line.
@@ -297,6 +277,10 @@ func (m Model) View() string {
 	if m.banner() {
 		body = append(lines(styleArt.Render(art)), "")
 	}
+	// The province field is part of the window, not an overlay: a row inside
+	// the frame, always drawn, so a reader sees where the filter lives before
+	// pressing anything.
+	body = append(body, m.searchField(m.width-4), "")
 	switch m.states[v] {
 	case loading:
 		body = append(body, lines(styleDim.Render(viewLoading[v]))...)
@@ -330,10 +314,7 @@ func (m Model) View() string {
 	top := frameCell("╭─") + styleTitle.Render(truncate(title, m.width-6)) +
 		frameCell(strings.Repeat("─", m.width-3-tw)+"╮")
 
-	out := make([]string, 0, len(body)+2)
-	if above != "" {
-		out = append(out, above)
-	}
+	out := make([]string, 0, len(body)+1)
 	out = append(out, top)
 	// Inner width: the two border columns and the space after the left one.
 	inner := max(1, m.width-3)
@@ -360,6 +341,49 @@ func (m Model) View() string {
 // row a block renderer leaves behind.
 func lines(block string) []string {
 	return strings.Split(strings.TrimRight(block, "\n"), "\n")
+}
+
+// searchField renders the province field as one framed row. It is always
+// visible: with a filter it shows the province, while typing it shows what is
+// being typed with a cursor, and empty it shows a placeholder — never a blank
+// gap that leaves a first-time reader wondering where the filter came from.
+func (m Model) searchField(width int) string {
+	label := "Provincia"
+
+	// What the field holds, in plain text: the width maths needs honest
+	// numbers, and styles are applied once the layout is decided.
+	value, placeholder := m.province, m.province == ""
+	if m.typing {
+		value, placeholder = m.typed, m.typed == ""
+	}
+
+	// A stable minimum so it reads as a field when empty, and never wider
+	// than the frame: a long province is truncated instead of pushing the
+	// border open.
+	box := min(max(24, len([]rune(label))+len([]rune(value))+6), max(14, width))
+	inner := box - 2 // the style pads one cell on each side
+
+	cursor := ""
+	if m.typing {
+		cursor = "▌" // left half block, the terminal cursor stand-in
+	}
+
+	var shown string
+	switch {
+	case placeholder:
+		shown = styleDim.Render(truncate("todas las provincias", inner))
+	case m.typing:
+		shown = styleTitle.Render(truncate(value, inner-1) + cursor)
+	default:
+		shown = styleTitle.Render(truncate(value, inner))
+	}
+
+	// Pad to the box width before styling, so the background is a solid
+	// block and the row stays exactly as wide as the layout expects.
+	if pad := inner - cells(shown); pad > 0 {
+		shown += strings.Repeat(" ", pad)
+	}
+	return styleHeader.Render(label) + " " + styleField.Render(shown)
 }
 
 // frameCell paints one border fragment in the frame colour.

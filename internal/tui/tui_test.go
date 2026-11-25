@@ -291,3 +291,63 @@ func TestDirectionIsTranslated(t *testing.T) {
 		}
 	}
 }
+
+// The province search lives INSIDE the window, as a labelled field above the
+// table — not floating above the top border where a reader cannot tell where
+// it came from. It is always drawn, even with no filter, so it is discoverable
+// before anyone presses `/`.
+func TestProvinceSearchRidesInsideTheFrame(t *testing.T) {
+	m := loaded(newModel(), viewIncidents)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = nm.(Model)
+
+	lines := splitLines(m.View())
+	top, field := -1, -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "╭") {
+			top = i
+		}
+		if strings.Contains(line, "Provincia") && strings.HasPrefix(line, "│") {
+			field = i
+		}
+	}
+	if top < 0 {
+		t.Fatal("no top border in the view")
+	}
+	if field < 0 {
+		t.Fatalf("the search field is not a framed row:\n%s", m.View())
+	}
+	if field < top {
+		t.Fatalf("the search field sits above the frame (top=%d field=%d):\n%s", top, field, m.View())
+	}
+	// Nothing may be drawn above the top border: that is the bug.
+	for i := 0; i < top; i++ {
+		if strings.TrimSpace(lines[i]) != "" {
+			t.Fatalf("line %d draws outside the frame: %q", i, lines[i])
+		}
+	}
+
+	// While typing, the field shows what is being typed, in its own row.
+	typing := press(m, "/", "toledo")
+	if got := fieldLine(t, typing.View()); !strings.Contains(got, "toledo") {
+		t.Fatalf("the field does not show the typed province: %q", got)
+	}
+	// Applied and unfocused, it still shows the filter so the screen explains
+	// itself without pressing anything.
+	applied := press(typing, "enter")
+	if got := fieldLine(t, applied.View()); !strings.Contains(got, "toledo") {
+		t.Fatalf("the field does not keep the applied province: %q", got)
+	}
+}
+
+// fieldLine returns the framed row that carries the search label.
+func fieldLine(t *testing.T, view string) string {
+	t.Helper()
+	for _, line := range splitLines(view) {
+		if strings.Contains(line, "Provincia") && strings.HasPrefix(line, "│") {
+			return line
+		}
+	}
+	t.Fatalf("no search field row in:\n%s", view)
+	return ""
+}
