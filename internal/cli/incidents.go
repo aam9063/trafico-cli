@@ -66,7 +66,7 @@ func runIncidentsList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, fetcher, err := loadFeedsContext()
+	cfg, fetcher, err := LoadFeedsContext()
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func newIncidentsShowCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, fetcher, err := loadFeedsContext()
+			cfg, fetcher, err := LoadFeedsContext()
 			if err != nil {
 				return err
 			}

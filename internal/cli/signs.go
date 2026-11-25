@@ -50,7 +50,7 @@ func runSigns(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, fetcher, err := loadFeedsContext()
+	cfg, fetcher, err := LoadFeedsContext()
 	if err != nil {
 		return err
 	}
