@@ -13,13 +13,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// feedsResponse is the JSON contract of `trafico feeds list` and `trafico
-// feeds status` (docs/ARRANQUE.md §5.3): the shared envelope with the
-// per-feed payload at top level.
-type feedsResponse struct {
-	output.Envelope
-	Feeds []app.FeedStatus `json:"feeds"`
-}
+// feedsResponse is now app.FeedsResponse (S4: the contract is declared once
+// in internal/app and the CLI and the `estado_feeds` MCP tool share it). The
+// alias keeps the render name stable for `trafico feeds`' pretty renderer.
+type feedsResponse = app.FeedsResponse
 
 // newFeedsCommand builds `trafico feeds` with its list and status
 // subcommands (CMD-02).
@@ -122,7 +119,7 @@ func writeFeedsResponse(cmd *cobra.Command, list []app.FeedStatus, fetched bool)
 		}
 	}
 	meta := app.DeriveMeta(list, time.Now().UTC(), fetched)
-	response := feedsResponse{
+	response := app.FeedsResponse{
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 		Feeds:    list,
 	}

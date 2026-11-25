@@ -33,6 +33,17 @@ type RouteInfo struct {
 	Segments  []RouteSegmentView `json:"segments"`
 }
 
+// RouteListResponse is the JSON contract of `trafico route add/list/remove`
+// (ROUTE-01) and of the `rutas` MCP tool when it lists (ola-7-mcp S4): the
+// shared envelope with the full saved-route list, so a mutation shows its
+// result and list stays a plain query. The declaration lives here so the CLI
+// and the MCP build the same document from one type instead of copying the
+// shape in two anonymous or package-local structs that nothing keeps equal.
+type RouteListResponse struct {
+	output.Envelope
+	Routes []RouteInfo `json:"routes"`
+}
+
 // Routes lists every saved route, in name order, with its segments parsed
 // in declaration order.
 func Routes(cfg *config.Config) ([]RouteInfo, error) {
