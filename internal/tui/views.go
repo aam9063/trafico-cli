@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/aam9063/trafico-cli/internal/app"
+	"github.com/aam9063/trafico-cli/internal/filter"
 	"github.com/aam9063/trafico-cli/internal/model"
 )
 
@@ -46,9 +47,14 @@ type table struct {
 // loadView is the tea.Cmd body of one view: fetch off the render path.
 func (m Model) loadView(v view) tableMsg {
 	ctx := context.Background()
+	// TUI-03: one province filter for every view, sent through the same app
+	// criteria the commands use, never a filter of the TUI's own (S5).
+	// ProvinceEqual folds case, accents and the bilingual pairs, so
+	// "alicante" finds "Alacant/Alicante".
+	provinces := m.provinces()
 	switch v {
 	case viewIncidents:
-		resp, err := app.Incidents(ctx, m.cfg, m.fetcher, app.IncidentCriteria{})
+		resp, err := app.Incidents(ctx, m.cfg, m.fetcher, app.IncidentCriteria{Criteria: filter.Criteria{Provinces: provinces}})
 		if err != nil {
 			return tableMsg{view: v, err: err}
 		}
@@ -64,7 +70,7 @@ func (m Model) loadView(v view) tableMsg {
 		}}
 
 	case viewSigns:
-		resp, err := app.Signs(ctx, m.cfg, m.fetcher, app.SignCriteria{})
+		resp, err := app.Signs(ctx, m.cfg, m.fetcher, app.SignCriteria{Provinces: provinces})
 		if err != nil {
 			return tableMsg{view: v, err: err}
 		}
@@ -80,7 +86,7 @@ func (m Model) loadView(v view) tableMsg {
 		}}
 
 	case viewRadars:
-		resp, err := app.Radars(ctx, m.cfg, m.fetcher, app.RadarCriteria{})
+		resp, err := app.Radars(ctx, m.cfg, m.fetcher, app.RadarCriteria{Provinces: provinces})
 		if err != nil {
 			return tableMsg{view: v, err: err}
 		}
@@ -96,7 +102,7 @@ func (m Model) loadView(v view) tableMsg {
 		}}
 
 	default: // viewSections
-		resp, err := app.Sections(ctx, m.cfg, m.fetcher, app.SectionCriteria{Kind: model.SectionKindInvive})
+		resp, err := app.Sections(ctx, m.cfg, m.fetcher, app.SectionCriteria{Kind: model.SectionKindInvive, Provinces: provinces})
 		if err != nil {
 			return tableMsg{view: v, err: err}
 		}
@@ -111,6 +117,39 @@ func (m Model) loadView(v view) tableMsg {
 			rows: rows,
 		}}
 	}
+}
+
+// provinces is the province filter as the app criteria expect it: nil when
+// nothing is filtered, so "see everything" stays the default.
+func (m Model) provinces() []string {
+	if m.province == "" {
+		return nil
+	}
+	return []string{m.province}
+}
+
+// The criteria accessors below exist for the tests (S8): they prove the
+// province filter reaches the same app criteria the commands use, and nothing
+// else does the filtering.
+func (m Model) incidentCriteria() app.IncidentCriteria {
+	return app.IncidentCriteria{Criteria: filter.Criteria{Provinces: m.provinces()}}
+}
+
+func (m Model) signCriteria() app.SignCriteria {
+	return app.SignCriteria{Provinces: m.provinces()}
+}
+
+func (m Model) radarCriteria() app.RadarCriteria {
+	return app.RadarCriteria{Provinces: m.provinces()}
+}
+
+func (m Model) sectionCriteria() app.SectionCriteria {
+	return app.SectionCriteria{Kind: model.SectionKindInvive, Provinces: m.provinces()}
+}
+
+// title is the title bar text for the current view, filter included.
+func (m Model) title() string {
+	return titleOf(m.current, len(m.tables[m.current].rows), m.states[m.current], m.province)
 }
 
 // pointPK renders a panel's single kilometre point.
@@ -254,11 +293,16 @@ func keyOf(s string) view {
 }
 
 // titleOf is the title bar text for a view.
-func titleOf(v view, n int, st state) string {
-	if st != ready {
-		return viewNames[v]
+func titleOf(v view, n int, st state, province string) string {
+	title := viewNames[v]
+	// A filtered screen must never look like the whole world.
+	if province != "" {
+		title += " · provincia " + province
 	}
-	return fmt.Sprintf("%s · %d", viewNames[v], n)
+	if st == ready {
+		title += fmt.Sprintf(" · %d", n)
+	}
+	return title
 }
 
 // Spanish labels for the contract values. The JSON keeps the feed's own text

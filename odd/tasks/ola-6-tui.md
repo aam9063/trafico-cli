@@ -34,8 +34,13 @@
 | T6 | S2 | Las otras cuatro vistas, más simples: tabla y navegación |
 | T7 | S1 | Enganche en `cmd/trafico`: sin argumentos y con TTY |
 | T8 | S8 | Tests del modelo y grabación de verificación con VHS |
+| T9 | S5, S6 | Buscador por provincia (`/`, `enter`, `esc`) en las cuatro vistas |
+| T10 | S3 | Marco con métrica exacta: ninguna línea se sale del ancho terminal |
 
 ## Log
 
 - **L1** — «quiero hacerle TUI y que tenga buena UI la terminal como este proyecto https://github.com/ahorrandocon20/alsa-cli ... no tan pro pero que sea bonita de ver. Y bueno terminar de pulir detalles y que sea 100% funcional.»
 - **L2** — La referencia usa Textual (Python). El equivalente en Go es Bubbletea + Lipgloss; la paleta y la estructura de ventana se copian, la dependencia no.
+- **L3** — «me faltó el buscador por provincia, como alsa-cli, solo provincia no municipio». El buscador entra en `internal/tui` únicamente: `filter.Criteria` ya acepta `Provinces` y `ProvinceEqual` pliega acentos y pares bilingües (`alicante` encuentra `Alacant/Alicante`). `Criteria` no acepta municipio, y añadirlo habría exigido tocar `filter` + `app` + `tui`; queda descartado (T9).
+- **L4** — «los bordes están desmaquetados». Tres causas: `styleFrame` llevaba `Border()`, así que cada fragmento pintado se envolvía en su propia caja; el arte y la tabla son bloques multilínea y se insertaban como un solo elemento, recibiendo borde solo la primera línea; y el borde inferior calculaba su relleno con `len()` en vez de celdas, saliendo una columna de más. Ahora el marco se ensambla a mano con anchura exacta medida en celdas (`ansi.StringWidth`), el arte se oculta por debajo de 80 columnas, y un test mide todas las líneas del marco de 40 a 140 columnas (T10). El banner se rehízo para escribir `TRAFICO-CLI` completo, guion incluido.
+- **L5** — La barra de atajos degrada por prioridad: primero caen las pistas de movimiento, la del buscador sobrevive hasta 90 columnas, y en terminales muy estrechas queda solo la vista actual entre corchetes más `q salir`. `q salir` no se cae nunca.
