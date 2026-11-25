@@ -96,6 +96,13 @@ type Model struct {
 	// itself is stateless: View reads only frame.
 	frame   int
 	ticking bool
+
+	// Opening menu: after the banner, the app asks ¿Qué quieres saber? and
+	// only a chosen view plus a province (or an explicit "todas") shows
+	// data. chosen guards it: once a view is picked, the menu is over for
+	// the run, and number keys go back to being view shortcuts.
+	menuUp bool
+	chosen bool
 }
 
 // tableMsg carries a loaded view back into the UI, so the network never blocks
@@ -113,12 +120,21 @@ func New(cfg *config.Config, fetcher *feeds.Fetcher) Model {
 	m.cfg, m.fetcher = cfg, fetcher
 	m.states[viewIncidents] = loading
 	m.ticking = true
+	m.menuUp = true
 	return m
 }
 
+// menuOpen reports whether the opening question is on screen: it opens with
+// the model and closes when a view is chosen, before any data shows.
+func (m Model) menuOpen() bool { return m.menuUp && !m.chosen }
+
 // Init starts the first load and the opening animation: the scene runs
 // while the first view fetches, the two together, neither blocking the other.
-func (m Model) Init() tea.Cmd { return tea.Batch(m.load(viewIncidents), tickBanner()) }
+func (m Model) Init() tea.Cmd {
+	// The menu opens with the model, so the first load must not fire until a
+	// view is chosen: no request before the user said which one.
+	return tickBanner()
+}
 
 // load returns the command that fetches one view.
 func (m Model) load(v view) tea.Cmd {
@@ -164,6 +180,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		s := msg.String()
+		// The opening menu answers first: a number key picks the view, closes
+		// the menu and opens the province search right away, so the next thing
+		// the user types goes into the question that matters (¿de qué
+		// provincia?). Anything else is ignored while the menu is up.
+		if m.menuOpen() {
+			if v := keyOf(s); v != viewCount {
+				m.menuUp = false
+				m.chosen = true
+				m.current = v
+				m.states[v] = ready
+				m.typing, m.typed = true, ""
+				return m, nil
+			}
+			return m, nil
+		}
 		// While the search input is open, every printable key belongs to it;
 		// typing "4" must not switch views and "q" must not quit.
 		if m.typing {
@@ -319,6 +350,13 @@ func (m Model) View() string {
 	case m.artShowing():
 		// No colour to paint with: the block letters keep the name up.
 		body = append(lines(styleArt.Render(art)), "")
+	}
+	if m.menuOpen() {
+		// The opening question, before any data: the four views, one line
+		// each, and the province field under them ready to be typed into.
+		body = append(body, "", "", "", "")
+		body = append(body, m.menuLines()...)
+		body = append(body, "", "")
 	}
 	// The province field is part of the window, not an overlay: a row inside
 	// the frame, always drawn, so a reader sees where the filter lives before
