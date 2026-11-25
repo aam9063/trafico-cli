@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/aam9063/trafico-cli/internal/app"
+	"github.com/aam9063/trafico-cli/internal/config"
 	"github.com/aam9063/trafico-cli/internal/feeds"
 	"github.com/aam9063/trafico-cli/internal/output"
 )
 
-// TestContractParityIncidenciasAndTramos pins ola-7-mcp S4 at its full depth:
-// a `tramos` or `incidencias` result over the real server (the one
+// TestContractParityMCPVersusCLI pins ola-7-mcp S4 at its full depth: an
+// `incidencias`, `tramos`, `rutas` or `estado_feeds` result over the real
+// server (the one
 // `trafico mcp` runs, over the SDK in-memory transport) carries exactly the
 // same document as the same command's `--json` output over the same fixture,
 // attribution and meta.published_at included. The assessment below compares
@@ -46,7 +48,7 @@ import (
 // CLI document over this fixture. If the CLI layer ever starts reshaping
 // those responses before writing them, this proxy must be extended in the
 // same change; from then on the assessment covers the real CLI wrapper too.
-func TestContractParityIncidenciasAndTramos(t *testing.T) {
+func TestContractParityMCPVersusCLI(t *testing.T) {
 	srv, _ := mcpFixtureServer(t)
 	deps, _ := newMCPDeps(t, srv.URL)
 	session := connectMCP(t, deps)
@@ -78,6 +80,53 @@ func TestContractParityIncidenciasAndTramos(t *testing.T) {
 			t.Fatalf("building the CLI-path sections response: %v", err)
 		}
 		assertContractParity(t, "tramos", mcpDoc, cliContractDocument(t, response))
+	})
+
+	// rutas and estado_feeds are the two envelopes the shared-type refactor
+	// rewired. A shared type cannot drift from itself, so these subtests are
+	// not there to prove the type: they prove the two PATHS still build the
+	// same document, which is what changes the day someone wraps or reshapes
+	// one side's response before writing it.
+	t.Run("rutas", func(t *testing.T) {
+		deps.Config.Routes = map[string]config.Route{
+			"trabajo": {Direction: "both", Segments: []string{"A-372:40-55", "CT-34:0-10"}},
+		}
+		mcpDoc := contractJSON(t, callTool(t, session, "rutas", map[string]any{}))
+
+		routes, err := app.Routes(deps.Config)
+		if err != nil {
+			t.Fatalf("building the CLI-path routes response: %v", err)
+		}
+		// Mirrors writeRoutesResponse (internal/cli/route.go) field for field:
+		// the same envelope construction, then a verbatim pass to output.Write.
+		now := time.Now().UTC()
+		response := app.RouteListResponse{
+			Envelope: output.NewEnvelope(&output.Meta{FetchedAt: now, Total: len(routes)}, output.NewAttribution(now)),
+			Routes:   routes,
+		}
+		assertContractParity(t, "rutas", mcpDoc, cliContractDocument(t, response))
+	})
+
+	t.Run("estado_feeds", func(t *testing.T) {
+		mcpDoc := contractJSON(t, callTool(t, session, "estado_feeds", map[string]any{}))
+
+		// The same fetcher, cache included, that the tool just read: a fresh
+		// one would compare a populated cache against an empty one and call
+		// that a divergence. The list mode never fetches, so this reaches no
+		// network.
+		list, err := app.FeedsList(t.Context(), deps.Config, deps.Fetcher)
+		if err != nil {
+			t.Fatalf("building the CLI-path feeds response: %v", err)
+		}
+		// Mirrors writeFeedsResponse (internal/cli/feeds.go): DeriveMeta over
+		// the same list, then output.Write. The list mode never fetched, so
+		// the fetched flag is false on both sides.
+		now := time.Now().UTC()
+		response := app.FeedsResponse{
+			Envelope: output.NewEnvelope(app.DeriveMeta(list, now, false), output.NewAttribution(now)),
+			Feeds:    list,
+		}
+		assertContractParity(t, "estado_feeds", mcpDoc, cliContractDocument(t, response))
 	})
 }
 
