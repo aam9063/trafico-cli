@@ -265,11 +265,12 @@ func rutasToolDefinition() ToolDefinition {
 					if err != nil {
 						return nil, nil, err
 					}
+					// The envelope is the one `trafico route list --json`
+					// prints (ROUTE-01): the same app.RouteListResponse the
+					// CLI builds, declared once in internal/app so the two
+					// presentations of the contract cannot drift apart (S4).
 					meta := &output.Meta{FetchedAt: time.Now().UTC(), Total: len(routes)}
-					response := struct {
-						output.Envelope
-						Routes []app.RouteInfo `json:"routes"`
-					}{
+					response := app.RouteListResponse{
 						Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 						Routes:   routes,
 					}
@@ -317,12 +318,11 @@ func estadoFeedsToolDefinition() ToolDefinition {
 					}
 				}
 				// The envelope is the one `trafico feeds --json` prints: the
-				// aggregation stays owned by app.DeriveMeta.
+				// aggregation stays owned by app.DeriveMeta, and the response
+				// is the same app.FeedsResponse the CLI builds, declared once
+				// in internal/app so the two presentations cannot drift (S4).
 				now := time.Now().UTC()
-				response := struct {
-					output.Envelope
-					Feeds []app.FeedStatus `json:"feeds"`
-				}{
+				response := app.FeedsResponse{
 					Envelope: output.NewEnvelope(app.DeriveMeta(list, now, args.Check), output.NewAttribution(now)),
 					Feeds:    list,
 				}
