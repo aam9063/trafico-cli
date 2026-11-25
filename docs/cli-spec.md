@@ -188,6 +188,14 @@ Flags:
 - `--json` — emite el JSON puro documentado en schemas/ en lugar del texto legible
 - `--pretty` (default `true`) — obsoleto: el texto legible ya es el valor por defecto, usa --json
 
+### `trafico mcp`
+
+Serve the Model Context Protocol (MCP) over stdio for AI agents.
+
+Runs a read-only MCP server on stdin/stdout: AI agents can query incidents, variable message signs, radars, road sections, saved routes and feed status without shell commands, and get the same JSON contract the --json flag prints.
+
+The v1 tools are read-only by design; saved-route and watch writes stay CLI affairs. Connect your agent with the command `trafico mcp` (docs/mcp.md).
+
 ### `trafico place`
 
 Manage saved places for the --near radius filter (stored locally, never sent anywhere)
