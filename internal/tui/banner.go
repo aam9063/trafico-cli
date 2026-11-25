@@ -20,6 +20,7 @@ package tui
 // gets the block letters, which need no colour at all.
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -156,4 +157,15 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// menuLines draws the opening question and its four answers, in the shape
+// the user asked for: one plain line per view, numbered to be picked with
+// the same number keys the views have always answered to.
+func (m Model) menuLines() []string {
+	out := []string{styleWarm.Render("¿Qué quieres saber?")}
+	for i, name := range viewNames {
+		out = append(out, fmt.Sprintf("%d.%s", i+1, name))
+	}
+	return out
 }

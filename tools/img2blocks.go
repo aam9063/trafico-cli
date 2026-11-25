@@ -116,13 +116,91 @@ func render(source image.Image, cols, bgThreshold int) []string {
 	for row := 0; row < rows; row++ {
 		var line strings.Builder
 		for col := 0; col < cols; col++ {
-			top := average(source, bounds, col, row*2, scale)
-			bottom := average(source, bounds, col, row*2+1, scale)
+			top := snap(source, average(source, bounds, col, row*2, scale))
+			bottom := snap(source, average(source, bounds, col, row*2+1, scale))
 			line.WriteString(cell(top, bottom, bgThreshold))
 		}
 		art = append(art, strings.TrimRight(line.String(), " "))
 	}
 	return art
+}
+
+// paletteOf collects the source's flat fills: every distinct opaque colour
+// that repeats at least minFill times. A flat pixel-art fill repeats; an
+// antialiased edge pixel does not. Snap after averaging, never instead of it:
+// the average keeps the geometry honest (thin lines survive as grey bands),
+// the snap then maps each averaged colour back onto the nearest real colour
+// of the picture, so the art invents no mud the source never had.
+func paletteOf(source image.Image) map[rgb]bool {
+	const minFill = 16
+	counts := map[rgb]int{}
+	b := source.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := source.At(x, y).RGBA()
+			if a == 0 {
+				continue
+			}
+			counts[rgb{uint8(r >> 8), uint8(g >> 8), uint8(bl >> 8)}]++
+		}
+	}
+	palette := map[rgb]bool{}
+	for c, n := range counts {
+		if n >= minFill {
+			palette[c] = true
+		}
+	}
+	return palette
+}
+
+// snap maps an averaged colour onto the nearest colour of the source's flat
+// fills, in the usual channel-max distance. A colour the source carries
+// verbatim stays put; only the averages get pulled back onto real colours.
+func snap(source image.Image, c rgb) rgb {
+	palette := paletteOf(source)
+	if len(palette) == 0 {
+		return c
+	}
+	for p := range palette {
+		if p == c {
+			return c
+		}
+	}
+	best := c
+	bestD := 1 << 30
+	for p := range palette {
+		d := chanMax(p, c)
+		if d < bestD {
+			bestD = d
+			best = p
+		}
+	}
+	return best
+}
+
+// chanMax is the largest per-channel distance between two colours.
+func chanMax(a, b rgb) int {
+	d := int(a.r) - int(b.r)
+	if d < 0 {
+		d = -d
+	}
+	if g := int(a.g) - int(b.g); g < 0 {
+		g = -g
+		if g > d {
+			d = g
+		}
+	} else if g > d {
+		d = g
+	}
+	if b := int(a.b) - int(b.b); b < 0 {
+		b = -b
+		if b > d {
+			d = b
+		}
+	} else if b > d {
+		d = b
+	}
+	return d
 }
 
 // average is the mean colour of the block that maps to one half-cell.
