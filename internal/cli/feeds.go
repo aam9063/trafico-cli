@@ -53,7 +53,7 @@ func newFeedsListCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List every configured feed with its URL and enabled state (no network)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, fetcher, err := loadFeedsContext()
+			cfg, fetcher, err := LoadFeedsContext()
 			if err != nil {
 				return err
 			}
@@ -78,7 +78,7 @@ func newFeedsStatusCommand() *cobra.Command {
 		Use:   "status",
 		Short: "Fetch every enabled feed and report freshness and errors per feed",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, fetcher, err := loadFeedsContext()
+			cfg, fetcher, err := LoadFeedsContext()
 			if err != nil {
 				return err
 			}
@@ -93,9 +93,9 @@ func newFeedsStatusCommand() *cobra.Command {
 	return cmd
 }
 
-// loadFeedsContext resolves the storage paths, loads the configuration and
+// LoadFeedsContext resolves the storage paths, loads the configuration and
 // builds the feed fetcher the feeds commands run with.
-func loadFeedsContext() (*config.Config, *feeds.Fetcher, error) {
+func LoadFeedsContext() (*config.Config, *feeds.Fetcher, error) {
 	paths, err := config.ResolvePaths(config.OSEnv)
 	if err != nil {
 		return nil, nil, errs.NewInternal(err.Error())
