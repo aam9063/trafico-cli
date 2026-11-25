@@ -209,7 +209,7 @@ func newRouteCheckCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, fetcher, err := loadFeedsContext()
+			cfg, fetcher, err := LoadFeedsContext()
 			if err != nil {
 				return err
 			}
