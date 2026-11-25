@@ -89,6 +89,13 @@ type Model struct {
 
 	width  int
 	height int
+
+	// Opening banner (banner.go): the picture's reveal counter and whether a
+	// tick is already in flight. A resize must not schedule a second tick
+	// while one is out, or the reveal would run at double speed. The picture
+	// itself is stateless: View reads only frame.
+	frame   int
+	ticking bool
 }
 
 // tableMsg carries a loaded view back into the UI, so the network never blocks
@@ -99,16 +106,19 @@ type tableMsg struct {
 	err  error
 }
 
-// New builds the model. The first view starts loading immediately.
+// New builds the model. The first view starts loading immediately, and the
+// first animation tick is already out the door (Init schedules it).
 func New(cfg *config.Config, fetcher *feeds.Fetcher) Model {
 	var m Model
 	m.cfg, m.fetcher = cfg, fetcher
 	m.states[viewIncidents] = loading
+	m.ticking = true
 	return m
 }
 
-// Init starts the first load.
-func (m Model) Init() tea.Cmd { return m.load(viewIncidents) }
+// Init starts the first load and the opening animation: the scene runs
+// while the first view fetches, the two together, neither blocking the other.
+func (m Model) Init() tea.Cmd { return tea.Batch(m.load(viewIncidents), tickBanner()) }
 
 // load returns the command that fetches one view.
 func (m Model) load(v view) tea.Cmd {
@@ -120,6 +130,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		// After a resize that makes the picture fit, resume the animation on
+		// the one tick already out the door; never schedule a second one.
+		if m.pictureShowing() && !m.ticking && m.frame < bannerFrames-1 {
+			m.ticking = true
+			return m, tickBanner()
+		}
+		return m, nil
+
+	case bannerTickMsg:
+		// One frame per tick. When the frames run out the scene stops: its
+		// last frame is the static banner, and no more Tick is scheduled.
+		m.ticking = false
+		if !m.pictureShowing() || m.frame >= bannerFrames-1 {
+			return m, nil
+		}
+		m.frame++
+		if m.frame < bannerFrames-1 {
+			m.ticking = true
+			return m, tickBanner()
+		}
 		return m, nil
 
 	case tableMsg:
@@ -230,12 +260,16 @@ func (m *Model) move(delta int) {
 	m.cursors[m.current] = c
 }
 
-// visibleRows is how many table rows fit: the frame, the art, the column
+// visibleRows is how many table rows fit: the frame, the banner, the column
 // header and the shortcut bar take the rest; the search line takes one more
-// while it is open.
+// while it is open. Which banner is showing decides how many rows it spends:
+// the picture takes bannerBlockRows (its rows, the tagline, the blank under
+// them), the block letters take the five they always did.
 func (m Model) visibleRows() int {
 	rows := m.height - 8
-	if m.banner() {
+	if m.pictureShowing() {
+		rows -= bannerBlockRows
+	} else if m.artShowing() {
 		rows -= artRows + 1
 	}
 	if m.typing {
@@ -252,9 +286,12 @@ func (m Model) visibleRows() int {
 // arithmetic below reads as one unit.
 const artRows = 5 // plus one blank line, counted in the -8
 
-// banner fits when the terminal can hold the block letters plus the frame.
-// Truncating ASCII art would leave half a word, so a narrow window drops it
-// and gives the rows back to the table.
+// banner fits when the terminal can hold a banner of some kind (80 columns
+// and 20 rows). Which kind is a second question, pictureShowing and
+// artShowing decide it: the picture also wants colour and bannerMinHeight
+// rows, the block letters only what they always needed. Truncating either
+// would leave half a scene, so a terminal under the gate drops it and gives
+// the rows back to the table.
 func (m Model) banner() bool { return m.width >= 80 && m.height >= 20 }
 
 // cells returns the display width of a possibly styled string: escape
@@ -274,7 +311,13 @@ func (m Model) View() string {
 	// table are multi-line strings, and a multi-line block handed to the
 	// frame as one element would only get a border on its first line.
 	body := []string{}
-	if m.banner() {
+	switch {
+	case m.pictureShowing():
+		// The picture and the tagline under it, both centred in the frame's
+		// inner width so the borders close over them.
+		body = append(m.sceneLines(), m.taglineLine(), "")
+	case m.artShowing():
+		// No colour to paint with: the block letters keep the name up.
 		body = append(lines(styleArt.Render(art)), "")
 	}
 	// The province field is part of the window, not an overlay: a row inside
