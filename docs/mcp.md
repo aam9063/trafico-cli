@@ -7,6 +7,29 @@ congelado que `trafico incidents --json` imprime: el agente aprende un formato, 
 
 La v1 es **solo lectura**, por diseño.
 
+## Probarlo sin agente
+
+Antes de enredarte con configuraciones de cliente, comprueba que el servidor contesta. Esta línea
+conduce una sesión real por stdio y pide la lista de herramientas:
+
+```bash
+printf '%s
+'   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}'   '{"jsonrpc":"2.0","method":"notifications/initialized"}'   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | trafico mcp
+```
+
+Si sale un `result.tools` con seis nombres, el binario está bien y lo que falte es la configuración del
+cliente. Con `prompts/list` salen las cuatro recetas y con `resources/list` los esquemas.
+
+Para mirarlo con interfaz, el inspector oficial ejecuta cualquier servidor stdio:
+
+```bash
+npx @modelcontextprotocol/inspector trafico mcp
+```
+
+En Windows el `command` de la configuración puede necesitar la ruta completa,
+`C:\Users\<tú>\.local\bin\trafico.exe`, porque el cliente MCP no siempre hereda el `PATH`
+de tu shell.
+
 ## Conectar el agente
 
 El binario ya instalado es todo lo que hace falta: el servidor no abre puerto ni pid, escribe el
@@ -44,7 +67,8 @@ protocolo en stdout y lee en stdin (diagnósticos solo en stderr, P-01).
 
 ### Pi
 
-`~/.pi/mcp.json` (o el equivalente del agente en uso):
+`~/.pi/agent/mcp.json` para servidores de usuario, o `.pi/mcp.json` en el proyecto (se lee tras
+conceder confianza al proyecto). El formato es el mismo `mcpServers`, y `pi mcp list` lo valida:
 
 ```json
 {

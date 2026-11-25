@@ -64,9 +64,13 @@ The binary lands in `${TRAFICO_INSTALL_DIR:-$HOME/.local/bin}` (created if neede
 prints the exact `PATH` line if that directory is not already on it. It is safe to re-run:
 installing over an existing binary replaces it.
 
+**The installer installs the latest published release, not `main`.** It overwrites whatever `trafico`
+is already on the `PATH`, so pin the version when you care which one you get — and check what you have
+with `trafico version`, which reports the tag it was built from (`0.0.0-dev` means a local build).
+
 ```bash
 # Install a specific release instead of the latest one
-TRAFICO_VERSION=v0.1.0 sh install.sh
+TRAFICO_VERSION=v0.4.0 sh install.sh
 
 # Install somewhere else
 TRAFICO_INSTALL_DIR=/usr/local/bin sh install.sh
@@ -113,13 +117,75 @@ trafico watch service install      # systemd on Linux, launchd on macOS
 Every command answers with human-readable text in Spanish, ending with the attribution line. `--json`
 prints the same response as one pure JSON value — the contract below — which is what an agent parses.
 
+## Terminal UI
+
+Run `trafico` with no arguments in a real terminal and it opens an interactive window: four views,
+a province search, and the same data the commands print. In a pipe, in CI, or under an agent it prints
+the help instead — a UI that draws escape codes into a log file is worse than no UI.
+
+| Key | What it does |
+|---|---|
+| `1` `2` `3` `4` | Incidencias · Paneles · Radares · Tramos |
+| `/` | open the province search |
+| `enter` | apply the filter · `esc` cancels while typing |
+| `esc` | clear the filter; with no filter active, quit |
+| `j` `k` or `↑` `↓` | move the selection |
+| `g` `G` | first / last row |
+| `r` | reload the current view · `q` quit |
+
+The search filters with `Provinces`: `alicante` finds `Alacant/Alicante`, because province matching folds
+case, accents and the bilingual pairs. The filter survives a view change and the view reloads only when
+its table was built under a different province. The title bar names the active filter, so a filtered
+screen never looks like the whole world.
+
+The UI calls the same `internal/app` functions the commands call. If it ever needed a query of its own,
+that query would belong in `app` — the TUI does not parse or filter a record.
+
 ## MCP (for agents)
 
 `trafico mcp` runs a read-only Model Context Protocol server over stdio, so an agent asks the same
 questions in natural language instead of shell commands: `incidencias`, `paneles`, `radares`, `tramos`,
-`rutas` and `estado_feeds` answer with exactly the `--json` contract, attribution included. Connect it
-from Claude Desktop, Cursor or Pi with the command `trafico mcp` — see [docs/mcp.md](docs/mcp.md).
-Saved-route and watch writes stay CLI affairs in v1.
+`rutas` and `estado_feeds` answer with exactly the `--json` contract, attribution included. The four
+recipes of §6.4 ship as MCP **prompts** and the JSON Schemas as **resources**, so the client discovers
+both from the protocol. Saved-route and watch writes stay CLI affairs in v1.
+
+### Try it in two minutes
+
+No agent needed to see it answer. This drives one real session over stdio by hand:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | trafico mcp
+```
+
+For a clickable version, the MCP Inspector runs any stdio server:
+
+```bash
+npx @modelcontextprotocol/inspector trafico mcp
+```
+
+### Connect your client
+
+Claude Desktop (`claude_desktop_config.json`) and Cursor (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "trafico": { "command": "trafico", "args": ["mcp"] }
+  }
+}
+```
+
+Pi reads `~/.pi/agent/mcp.json` (user level) or `.pi/mcp.json` (project level, after project trust) with
+the same shape; validate it with `pi mcp list`. Tools appear as `mcp__trafico__<tool>`.
+
+On Windows the config's `command` may need the full path, `C:\\Users\\<you>\\.local\\bin\\trafico.exe`.
+Nothing listens on a port: the server speaks the protocol on stdin/stdout and keeps diagnostics on
+stderr, so it never pollutes a response (P-01).
+
+More detail, per-tool arguments included: [docs/mcp.md](docs/mcp.md).
 
 ## Commands
 
