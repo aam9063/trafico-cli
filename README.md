@@ -113,6 +113,14 @@ trafico watch service install      # systemd on Linux, launchd on macOS
 Every command answers with human-readable text in Spanish, ending with the attribution line. `--json`
 prints the same response as one pure JSON value — the contract below — which is what an agent parses.
 
+## MCP (for agents)
+
+`trafico mcp` runs a read-only Model Context Protocol server over stdio, so an agent asks the same
+questions in natural language instead of shell commands: `incidencias`, `paneles`, `radares`, `tramos`,
+`rutas` and `estado_feeds` answer with exactly the `--json` contract, attribution included. Connect it
+from Claude Desktop, Cursor or Pi with the command `trafico mcp` — see [docs/mcp.md](docs/mcp.md).
+Saved-route and watch writes stay CLI affairs in v1.
+
 ## Commands
 
 | Command | What it answers |
