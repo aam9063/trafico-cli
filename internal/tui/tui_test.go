@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 // key builds the KeyMsg a real key press produces, without a terminal.
@@ -50,6 +51,31 @@ func press(m Model, keys ...string) Model {
 
 func newModel() Model {
 	return New(nil, nil)
+}
+
+// withTrueColor stands in for a colour terminal: the tests run with no TTY,
+// where lipgloss detects Ascii and the TUI would fall back to the block
+// letters. The banner tests need the picture path, so they swap the probe;
+// the cleanup restores the real probe for every other test.
+func withTrueColor(t *testing.T) {
+	t.Helper()
+	old := bannerColorProfile
+	bannerColorProfile = func() termenv.Profile { return termenv.TrueColor }
+	t.Cleanup(func() { bannerColorProfile = old })
+}
+
+// frameTable is the base model the width test draws: two loaded rows, one
+// long free-text cell, everything the packing arithmetic has to survive.
+func frameTable(m Model) Model {
+	m.states[viewIncidents] = ready
+	m.tables[viewIncidents] = table{
+		cols: []string{"CARRETERA", "PK", "TIPO", "GRAVEDAD", "DESCRIPCIÓN"},
+		rows: [][]string{
+			{"A-1", "12.5-13", "obras", "alta", "obras de mantenimiento en el arcón derecho"},
+			{"M-30", "3.0", "accidente", "media", "accidente con dos vehículos"},
+		},
+	}
+	return m
 }
 
 // ready makes a view pretend to be loaded so its key paths are reachable.
@@ -204,15 +230,7 @@ func TestViewReloadsOnFilterChange(t *testing.T) {
 // window. Every drawn line has exactly the width the terminal reported.
 func TestFrameIsExactlyTerminalWidth(t *testing.T) {
 	for _, w := range []int{40, 60, 76, 79, 80, 96, 100, 140} {
-		m := New(nil, nil)
-		m.states[viewIncidents] = ready
-		m.tables[viewIncidents] = table{
-			cols: []string{"CARRETERA", "PK", "TIPO", "GRAVEDAD", "DESCRIPCIÓN"},
-			rows: [][]string{
-				{"A-1", "12.5-13", "obras", "alta", "obras de mantenimiento en el arcón derecho"},
-				{"M-30", "3.0", "accidente", "media", "accidente con dos vehículos"},
-			},
-		}
+		m := frameTable(New(nil, nil))
 		for _, typing := range []bool{false, true} {
 			mm := m
 			mm.typing, mm.typed = typing, ""
@@ -232,6 +250,180 @@ func TestFrameIsExactlyTerminalWidth(t *testing.T) {
 				}
 			}
 		}
+	}
+
+	// The animating picture obeys the same discipline: every frame of the
+	// opening animation lands exactly on the terminal width, banner rows
+	// included, whether the picture fits or the terminal is under its 80
+	// columns and nothing is drawn at all.
+	withTrueColor(t)
+	for _, w := range []int{40, 76, 79, 80, 96, 100, 140} {
+		for f := 0; f < bannerFrames; f++ {
+			mm := frameTable(New(nil, nil))
+			mm.frame = f
+			nm, _ := mm.Update(tea.WindowSizeMsg{Width: w, Height: 24})
+			mm = nm.(Model)
+			for i, line := range splitLines(mm.View()) {
+				if !strings.HasPrefix(line, "╭") && !strings.HasPrefix(line, "│") && !strings.HasPrefix(line, "╰") {
+					continue
+				}
+				if got := ansi.StringWidth(line); got != w {
+					t.Fatalf("width %d frame %d line %d has %d cells: %q", w, f, i, got, line)
+				}
+			}
+		}
+	}
+}
+
+// The animated frames differ from each other -- the reveal really advances --
+// and the animation stops: after the last tick the model reports it over and a
+// further tick neither advances nor schedules anything.
+func TestBannerAnimationMovesAndStops(t *testing.T) {
+	withTrueColor(t)
+	m := newModel()
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = nm.(Model)
+	if !m.bannerAnimating() {
+		t.Fatal("a fresh model on a wide terminal is not animating")
+	}
+
+	frames := make([]string, bannerFrames)
+	for f := 0; f < bannerFrames; f++ {
+		mm := m
+		mm.frame = f
+		frames[f] = mm.View()
+	}
+	for f := 0; f+1 < bannerFrames; f++ {
+		if frames[f] == frames[f+1] {
+			t.Fatalf("animation frame %d equals frame %d: the cars are not moving", f, f+1)
+		}
+	}
+
+	// bannerFrames-1 ticks reveal the picture a row at a time; the last one
+	// lands it whole and stops the ticking.
+	for i := 0; i < bannerFrames-1; i++ {
+		nm, cmd := m.Update(bannerTickMsg{})
+		m = nm.(Model)
+		if i < bannerFrames-2 && cmd == nil {
+			t.Fatalf("tick %d did not schedule the next frame", i)
+		}
+	}
+	if m.frame != bannerFrames-1 || m.bannerAnimating() {
+		t.Fatalf("after the ticks the animation is still running: frame=%d", m.frame)
+	}
+	nm, cmd := m.Update(bannerTickMsg{})
+	if cmd != nil || nm.(Model).frame != bannerFrames-1 {
+		t.Fatal("a tick after the last frame advanced or scheduled again")
+	}
+}
+
+// A terminal too small for the picture gets no banner of any kind, no
+// animation, and the table keeps every row the frame can hold.
+func TestTooSmallTerminalHasNoBanner(t *testing.T) {
+	// Colour terminal, but the picture would not fit vertically: nothing is
+	// drawn at the top and the table gets the full frame.
+	withTrueColor(t)
+	m := newModel()
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 21})
+	m = nm.(Model)
+	if m.pictureShowing() || m.artShowing() {
+		t.Fatal("a colour terminal too short for the picture must drop the banner entirely")
+	}
+	if got := m.visibleRows(); got != 21-8 {
+		t.Fatalf("visible rows = %d, want the full %d", got, 21-8)
+	}
+	if v := m.View(); strings.Contains(v, "▀") || strings.Contains(v, "____") {
+		t.Fatal("a small terminal drew a banner:\n" + v)
+	}
+	nm, cmd := m.Update(bannerTickMsg{})
+	if cmd != nil || nm.(Model).frame != 0 || nm.(Model).bannerAnimating() {
+		t.Fatal("a terminal with no picture must not animate")
+	}
+
+	// And the classic small case: too narrow for the name at all, whatever
+	// the profile could paint.
+	nm, _ = m.Update(tea.WindowSizeMsg{Width: 79, Height: 30})
+	m = nm.(Model)
+	if m.banner() {
+		t.Fatal("a 79-column terminal must drop the banner")
+	}
+	if got := m.visibleRows(); got != 30-8 {
+		t.Fatalf("narrow terminal visible rows = %d, want %d", got, 30-8)
+	}
+}
+
+// The generated picture is exactly what the frame will draw: every row as
+// wide as the tool was asked for, every row carrying something, and narrow
+// enough for the smallest terminal the gate lets through. A row one cell over
+// would break the frame open; a blank row would make two frames of the reveal
+// identical and the animation would look stuck.
+func TestBannerPictureGeometry(t *testing.T) {
+	withTrueColor(t)
+	if bannerArtRows < 2 {
+		t.Fatalf("the picture has %d rows: there is nothing to reveal", bannerArtRows)
+	}
+	for i, line := range bannerArtLines {
+		if got := ansi.StringWidth(line); got > bannerArtCols {
+			t.Fatalf("row %d is %d cells, wider than the picture's %d", i, got, bannerArtCols)
+		}
+		if strings.TrimSpace(ansi.Strip(line)) == "" {
+			t.Fatalf("row %d of the picture is blank", i)
+		}
+	}
+	if bannerArtCols > 80-3 {
+		t.Fatalf("the picture is %d cells wide and does not fit the 80-column frame", bannerArtCols)
+	}
+
+	// The reveal adds one row per frame, keeps the block's height constant so
+	// the table never jumps, and ends with the picture whole.
+	m := newModel()
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = nm.(Model)
+	for f := 0; f < bannerFrames; f++ {
+		mm := m
+		mm.frame = f
+		want := f + 1
+		if want > bannerArtRows {
+			want = bannerArtRows
+		}
+		if got := mm.bannerRevealRows(); got != want {
+			t.Fatalf("frame %d reveals %d rows, want %d", f, got, want)
+		}
+		if got := len(mm.sceneLines()); got != bannerArtRows {
+			t.Fatalf("frame %d draws %d rows: the block must keep its height", f, got)
+		}
+		// The rows the reveal has reached are padded back out to the
+		// picture's own width, so the block is square at its edges instead
+		// of ragged where the generator trimmed trailing spaces.
+		width := -1
+		for i, line := range mm.sceneLines() {
+			if i >= want {
+				if line != "" {
+					t.Fatalf("frame %d draws row %d before the reveal reaches it", f, i)
+				}
+				continue
+			}
+			got := ansi.StringWidth(line)
+			if width < 0 {
+				width = got
+			}
+			if got != width || got < bannerArtCols {
+				t.Fatalf("frame %d row %d is %d cells, want the block's %d", f, i, got, width)
+			}
+		}
+	}
+
+	// The canonical 80x24 terminal still gets the picture, and the tagline
+	// sits under it: those words are the only place the banner promises
+	// anything, so they have to be on the screen with the art.
+	nm, _ = New(nil, nil).Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	small := nm.(Model)
+	if !small.pictureShowing() {
+		t.Fatal("80x24 must show the picture")
+	}
+	small.frame = bannerFrames - 1
+	if v := small.View(); !strings.Contains(v, bannerTagline) {
+		t.Fatalf("the picture is up but the tagline is missing:\n%s", v)
 	}
 }
 
