@@ -24,5 +24,6 @@ Thumbs.db
 # in the repository. assets/demo.gif and assets/demo.tape are tracked on
 # purpose (the reproducible demo), so only the ad-hoc captures are ignored.
 assets/*.png
+assets/*.jpg
 assets/*.mp4
 assets/trafico-tui.gif
