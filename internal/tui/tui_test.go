@@ -1,6 +1,11 @@
 package tui
 
 import (
+	"fmt"
+	"image/png"
+	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -86,10 +91,24 @@ func loaded(m Model, v view) Model {
 	return m
 }
 
+// chosenView picks a view from the opening menu, the way a user does: one
+// number key closes the menu and opens the province search, and the search
+// is cancelled so the test controls when it opens.
+func chosenView(m Model, v view) Model {
+	nm, _ := m.Update(key(fmt.Sprintf("%d", int(v)+1)))
+	m = nm.(Model)
+	if m.menuOpen() || !m.typing {
+		panic("chosenView: the menu did not hand over to the search")
+	}
+	m.typing, m.typed = false, ""
+	return m
+}
+
 // S8 / TUI-03: `/` opens the search, enter applies the province and esc
-// clears the filter once applied.
+// clears the filter once applied. The opening menu is modal: the tests pick
+// a view first, exactly as a user must.
 func TestProvinceSearchLifecycle(t *testing.T) {
-	m := press(loaded(newModel(), viewIncidents), "/", "t", "o", "l")
+	m := press(loaded(chosenView(newModel(), viewIncidents), viewIncidents), "/", "t", "o", "l")
 	if !m.typing {
 		t.Fatal("/ did not open the search")
 	}
@@ -114,7 +133,7 @@ func TestProvinceSearchLifecycle(t *testing.T) {
 // While typing, keys belong to the input: a digit must not switch views and
 // even q must not quit the program.
 func TestTypingGoesToInput(t *testing.T) {
-	m := press(loaded(newModel(), viewIncidents), "/", "4", "q")
+	m := press(loaded(chosenView(newModel(), viewIncidents), viewIncidents), "/", "4", "q")
 	if m.current != viewIncidents {
 		t.Fatalf("typing switched the view to %d", m.current)
 	}
@@ -126,18 +145,18 @@ func TestTypingGoesToInput(t *testing.T) {
 // Backspace edits the typed text; esc while typing cancels without applying;
 // enter with an empty query just closes the search.
 func TestSearchEditing(t *testing.T) {
-	m := press(loaded(newModel(), viewIncidents), "/", "a", "l", "backspace", "a")
+	m := press(loaded(chosenView(newModel(), viewIncidents), viewIncidents), "/", "a", "l", "backspace", "a")
 	if m.typed != "aa" {
 		t.Fatalf("typed %q, want aa", m.typed)
 	}
 
-	cancelled := press(loaded(newModel(), viewIncidents), "/", "to", "esc")
+	cancelled := press(loaded(chosenView(newModel(), viewIncidents), viewIncidents), "/", "to", "esc")
 	if cancelled.typing || cancelled.typed != "" || cancelled.province != "" {
 		t.Fatalf("esc while typing: searching=%v typed=%q province=%q",
 			cancelled.typing, cancelled.typed, cancelled.province)
 	}
 
-	empty := press(loaded(newModel(), viewIncidents), "/", "enter")
+	empty := press(loaded(chosenView(newModel(), viewIncidents), viewIncidents), "/", "enter")
 	if empty.typing || empty.province != "" {
 		t.Fatalf("empty enter changed state: searching=%v province=%q", empty.typing, empty.province)
 	}
@@ -146,7 +165,7 @@ func TestSearchEditing(t *testing.T) {
 // The filter reaches the app criteria of every view, never a filter of the
 // TUI's own (S5); esc clears it from the criteria too.
 func TestFilterPropagatesToCriteria(t *testing.T) {
-	m := press(loaded(newModel(), viewIncidents), "/", "alicante", "enter")
+	m := press(loaded(chosenView(newModel(), viewIncidents), viewIncidents), "/", "alicante", "enter")
 	m = loaded(m, viewIncidents) // the reload landed; one result row
 
 	if inc := m.incidentCriteria(); len(inc.Criteria.Provinces) != 1 || inc.Criteria.Provinces[0] != "alicante" {
@@ -176,11 +195,12 @@ func TestFilterPropagatesToCriteria(t *testing.T) {
 // province reloads on the switch; one already loaded with the same province
 // does not refetch. With no filter, esc quits instead.
 func TestViewReloadsOnFilterChange(t *testing.T) {
-	m := loaded(newModel(), viewIncidents)
+	m := loaded(chosenView(newModel(), viewIncidents), viewIncidents)
 	m.states[viewSigns] = ready
 	m.tables[viewSigns].cols = []string{"CARRETERA"}
 
-	m, cmd := send(m, "/")
+	var cmd tea.Cmd
+	m, cmd = send(m, "/")
 	_ = cmd
 	m = press(m, "t", "o")
 	m, cmd = send(m, "enter")
@@ -357,6 +377,97 @@ func TestTooSmallTerminalHasNoBanner(t *testing.T) {
 // enough for the smallest terminal the gate lets through. A row one cell over
 // would break the frame open; a blank row would make two frames of the reveal
 // identical and the animation would look stuck.
+// The source is flat-colour pixel art: every colour the picture shows exists
+// in the PNG. Averaging a 10x10-pixel block invents intermediate colours (mud
+// blending a car into the road), so the generated art must only paint with
+// colours the source itself carries, up to a small tolerance for the
+// antialiased edges of the original image.
+func TestBannerArtUsesSourcePalette(t *testing.T) {
+	withTrueColor(t)
+	f, err := os.Open("../../assets/banner/banner.png")
+	if err != nil {
+		t.Fatalf("open the source picture: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	src, err := png.Decode(f)
+	if err != nil {
+		t.Fatalf("decode the source picture: %v", err)
+	}
+
+	// The palette the source carries: every distinct opaque colour, counted
+	// so a stray antialiasing pixel can be told from a real flat fill.
+	counts := map[[3]uint8]int{}
+	b := src.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := src.At(x, y).RGBA()
+			if a == 0 {
+				continue
+			}
+			counts[[3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(bl >> 8)}]++
+		}
+	}
+	palette := map[[3]uint8]bool{}
+	for c, n := range counts {
+		if n >= 16 { // a flat fill repeats; an edge pixel does not
+			palette[c] = true
+		}
+	}
+	if len(palette) < 4 {
+		t.Fatalf("the source palette collapsed to %d colours: the fixture is wrong", len(palette))
+	}
+
+	// Every drawn colour in the art must be one the source carries (within
+	// a small tolerance for rounding), not an invented average.
+	near := func(a, b [3]uint8) bool {
+		d := 0
+		for i := range a {
+			delta := int(a[i]) - int(b[i])
+			if delta < 0 {
+				delta = -delta
+			}
+			if delta > d {
+				d = delta
+			}
+			if delta > 12 {
+				return false
+			}
+		}
+		return d <= 12
+	}
+	offenders := 0
+	for _, line := range bannerArtLines {
+		for _, m := range ansiColorRe.FindAllStringSubmatch(line, -1) {
+			var c [3]uint8
+			for i := 0; i < 3; i++ {
+				n, _ := strconv.Atoi(m[1+i])
+				c[i] = uint8(n)
+			}
+			decided := false
+			if near(c, [3]uint8{40, 44, 52}) {
+				decided = true
+			} else {
+				for p := range palette {
+					if near(c, p) {
+						decided = true
+						break
+					}
+				}
+			}
+			if !decided {
+				offenders++
+			}
+		}
+	}
+	if offenders > 0 {
+		t.Fatalf("%d drawn colours are averages the source never had: regenerate with palette snapping", offenders)
+	}
+}
+
+// ansiColorRe matches the 24-bit SGR parameters the generator emits, both the
+// foreground form 38;2;r;g;b and the background form 48;2;r;g;b.
+var ansiColorRe = regexp.MustCompile(`(?:38|48);2;(\d+);(\d+);(\d+)`)
+
 func TestBannerPictureGeometry(t *testing.T) {
 	withTrueColor(t)
 	if bannerArtRows < 2 {
@@ -427,6 +538,60 @@ func TestBannerPictureGeometry(t *testing.T) {
 	}
 }
 
+// The opening flow: after the banner, the app asks ¿Qué quieres saber? with
+// the four views; choosing one opens the province search, and typing a
+// province and pressing enter shows the data. Enter with no province shows
+// everything, because "todas las provincias" is also an answer.
+func TestOpeningMenuFlow(t *testing.T) {
+	withTrueColor(t)
+	m := newModel()
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = nm.(Model)
+	if !m.menuOpen() {
+		t.Fatal("the menu is not open before the banner finishes")
+	}
+	v := m.View()
+	for _, want := range []string{"¿Qué quieres saber?", "1.Incidencias", "2.Paneles", "3.Radares", "4.Tramos"} {
+		if !strings.Contains(ansi.Strip(v), want) {
+			t.Fatalf("the menu is missing %q:\n%s", want, v)
+		}
+	}
+
+	// Choosing a view opens the province search instead of showing raw rows.
+	m = press(m, "2")
+	if m.current != viewSigns {
+		t.Fatalf("chose 2, view is %d", m.current)
+	}
+	if !m.typing {
+		t.Fatal("choosing a view should open the province search")
+	}
+	if v := ansi.Strip(m.View()); strings.Contains(v, "CARRETERA") {
+		t.Fatalf("rows shown before a province was entered:\n%s", v)
+	}
+	// yet the menu is closed once a view was chosen.
+	if m.menuOpen() {
+		t.Fatal("the menu stayed open after choosing")
+	}
+
+	// Typing a province and pressing enter shows the data.
+	m = press(m, "a", "l", "i", "enter")
+	if m.typing || m.province != "ali" {
+		t.Fatalf("the province did not apply: searching=%v province=%q", m.typing, m.province)
+	}
+	if m.states[viewSigns] != loading {
+		t.Fatalf("the view did not reload under the province: state %v", m.states[viewSigns])
+	}
+	// The choice is consultable later: the menu does not come back after the
+	// first data screen.
+	m = press(m, "3")
+	if m.menuOpen() || m.typing {
+		t.Fatalf("keys resumed the menu: menu=%v typing=%v", m.menuOpen(), m.typing)
+	}
+	if m.current != viewRadars {
+		t.Fatalf("3 switched to view %d, want radares", m.current)
+	}
+}
+
 // The banner spells the whole name, hyphen included, and only appears when it
 // fits: half a block letter is worse than no banner.
 func TestBanner(t *testing.T) {
@@ -489,7 +654,7 @@ func TestDirectionIsTranslated(t *testing.T) {
 // it came from. It is always drawn, even with no filter, so it is discoverable
 // before anyone presses `/`.
 func TestProvinceSearchRidesInsideTheFrame(t *testing.T) {
-	m := loaded(newModel(), viewIncidents)
+	m := loaded(chosenView(newModel(), viewIncidents), viewIncidents)
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = nm.(Model)
 
