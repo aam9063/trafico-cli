@@ -44,11 +44,11 @@ var (
 // art is drawn once, at the top. Three rows of block letters rather than a huge
 // ASCII logo: in an 80x24 terminal a big picture is the whole screen, and the
 // point of a traffic tool is the traffic.
-const art = ` _____ ____      _    _____ ___ ___  ___
-|_   _|  _ \    / \  |  ___|_ _/ _ \/ _ \
-  | | | |_) |  / _ \ | |_   | | | | | | |
-  | | |  _ <  / ___ \|  _|  | | |_| | |_|
-  |_| |_| \_\/_/   \_\_|   |___\___/ \___|`
+const art = ` _____ ____      _    _____ ___ ___  ___    ___ _     ___
+|_   _|  _ \    / \  |  ___|_ _/ _ \/ _ \  / __| |   |_ _|
+  | | | |_) |  / _ \ | |_   | | | | | | | | (__| |    | |
+  | | |  _ <  / ___ \|  _|  | | |_| | |_|  \___ \ |__ _| |
+  |_| |_| \_\/_/   \_\_|   |___\___/ \___|     |_____|___|`
 
 // state is what a view is doing.
 type state int
