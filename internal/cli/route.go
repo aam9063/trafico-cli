@@ -11,13 +11,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// routesResponse is the JSON contract of `trafico route add/list/remove`
-// (ROUTE-01): the shared envelope with the full saved-route list, so a
-// mutation shows its result and list stays a plain query.
-type routesResponse struct {
-	output.Envelope
-	Routes []app.RouteInfo `json:"routes"`
-}
+// routesResponse is now app.RouteListResponse (S4: the contract is declared
+// once in internal/app and the CLI and the `rutas` MCP tool share it). The
+// alias keeps the render name stable for `trafico route`'s pretty renderer.
+type routesResponse = app.RouteListResponse
 
 // routeResponse is the JSON contract of `trafico route show <name>`.
 type routeResponse struct {
@@ -244,7 +241,7 @@ func newRouteCheckCommand() *cobra.Command {
 // was fetched and nothing can be stale) and total counts the routes.
 func writeRoutesResponse(cmd *cobra.Command, routes []app.RouteInfo) error {
 	meta := &output.Meta{FetchedAt: time.Now().UTC(), Total: len(routes)}
-	response := routesResponse{
+	response := app.RouteListResponse{
 		Envelope: output.NewEnvelope(meta, output.NewAttribution(time.Now().UTC())),
 		Routes:   routes,
 	}

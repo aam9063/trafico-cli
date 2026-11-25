@@ -102,6 +102,17 @@ type FeedStatus struct {
 	Warning *string `json:"warning"`
 }
 
+// FeedsResponse is the JSON contract of `trafico feeds list` and `trafico
+// feeds status` (docs/ARRANQUE.md §5.3, CMD-02) and of the `estado_feeds` MCP
+// tool (ola-7-mcp S4): the shared envelope with the per-feed payload at top
+// level. The declaration lives here so the CLI and the MCP build the same
+// document from one type instead of copying the shape in two package-local
+// structs that nothing keeps equal.
+type FeedsResponse struct {
+	output.Envelope
+	Feeds []FeedStatus `json:"feeds"`
+}
+
 // FeedsList returns every configured feed with its URL and enabled state,
 // enriched with local cache metadata. It never touches the network: it is
 // the static view of `trafico feeds list`.
