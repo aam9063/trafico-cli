@@ -268,3 +268,26 @@ func TestBanner(t *testing.T) {
 func splitLines(s string) []string {
 	return strings.Split(s, "\n")
 }
+
+// The table speaks Spanish even where the contract keeps the feed's English
+// value: a person reading "DIRECCIÓN" should not be handed "both". The JSON
+// is untouched (P-04); this is presentation only.
+func TestDirectionIsTranslated(t *testing.T) {
+	str := func(s string) *string { return &s }
+	cases := []struct {
+		in   *string
+		want string
+	}{
+		{str("both"), "ambos"},
+		{str("positive"), "creciente"},
+		{str("negative"), "decreciente"},
+		{str(""), "-"},
+		{nil, "-"},
+		{str("algoNuevo"), "algoNuevo"}, // honest fallback, never a guess
+	}
+	for _, c := range cases {
+		if got := directionCell(c.in); got != c.want {
+			t.Errorf("directionCell(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
