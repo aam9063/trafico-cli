@@ -88,6 +88,26 @@ func renderRadarsText(w io.Writer, v any) error {
 	return err
 }
 
+// sectionDirectionText renders a section's direction for a person. The
+// contract keeps the feed's own English value (directionRelative is "both",
+// "positive" or "negative"); a table in Spanish should not hand a reader
+// "both". An unknown value falls through to the original instead of becoming
+// a guess, which is how a new feed value shows up honestly.
+func sectionDirectionText(s *string) string {
+	if s == nil || *s == "" {
+		return "-"
+	}
+	switch *s {
+	case "both":
+		return "ambos"
+	case "positive":
+		return "creciente"
+	case "negative":
+		return "decreciente"
+	}
+	return *s
+}
+
 // renderSectionsText renders `trafico sections` for a human (FORMAT-02): a
 // heading naming the dataset with the count, and one aligned row per
 // section with its road, kilometre interval, province, length and direction.
@@ -112,7 +132,7 @@ func renderSectionsText(w io.Writer, v any) error {
 			length = formatPKValue(*section.LengthKM) + " km"
 		}
 		table.addRow(section.Road, formatPK(section.PK), optionalToDash(section.Province),
-			length, optionalToDash(section.Direction))
+			length, sectionDirectionText(section.Direction))
 	}
 	// The dataset kind travels in the heading; nothing else truncates here.
 	table.writeTo(&b, "  ", nil)

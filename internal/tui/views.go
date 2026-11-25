@@ -109,7 +109,7 @@ func (m Model) loadView(v view) tableMsg {
 		rows := make([][]string, 0, len(resp.Sections))
 		for _, s := range resp.Sections {
 			rows = append(rows, []string{
-				s.Road, pk(s.PK), dashPtr(s.Province), dashPtr(s.Direction),
+				s.Road, pk(s.PK), dashPtr(s.Province), directionCell(s.Direction),
 			})
 		}
 		return tableMsg{view: v, t: table{
@@ -167,6 +167,17 @@ func dash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// directionCell renders the section direction for a person. The contract keeps
+// the feed's own English value ("both", "positive", "negative"); this is the
+// only place that translates it, and an unknown value falls through to the
+// original rather than becoming a guess.
+func directionCell(s *string) string {
+	if s == nil || *s == "" {
+		return "-"
+	}
+	return es(directionES, *s)
 }
 
 func dashPtr(s *string) string {
@@ -333,6 +344,11 @@ var (
 		"low":     "baja",
 		"medium":  "media",
 		"high":    "alta",
+	}
+	directionES = map[string]string{
+		"both":     "ambos",
+		"positive": "creciente",
+		"negative": "decreciente",
 	}
 	subtypeES = map[string]string{
 		"roadworks":                  "obras",

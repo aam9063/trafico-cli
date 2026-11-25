@@ -437,3 +437,30 @@ func TestRadarsTextCountsACutDestinationLabel(t *testing.T) {
 		t.Errorf("two long destination labels must be counted:\n%s", out)
 	}
 }
+
+// The sections table speaks Spanish where the contract keeps the feed's
+// English direction, and never invents one it does not know.
+func TestRenderSectionsTextTranslatesDirection(t *testing.T) {
+	str := func(s string) *string { return &s }
+	response := app.SectionsResponse{
+		Kind: "invive",
+		Sections: []model.Section{
+			{Road: "CV-95", Direction: str("both")},
+			{Road: "CV-904", Direction: str("positive")},
+			{Road: "CV-865", Direction: nil},
+		},
+	}
+	var buf bytes.Buffer
+	if err := renderSectionsText(&buf, response); err != nil {
+		t.Fatalf("renderSectionsText: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"ambos", "creciente"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("sections text lost %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "both") || strings.Contains(out, "positive") {
+		t.Errorf("sections text kept an English direction:\n%s", out)
+	}
+}
