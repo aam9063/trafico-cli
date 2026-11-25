@@ -55,7 +55,7 @@ func (m Model) loadView(v view) tableMsg {
 		rows := make([][]string, 0, len(resp.Incidents))
 		for _, inc := range resp.Incidents {
 			rows = append(rows, []string{
-				inc.Road, pk(inc.PK), inc.Type, inc.Severity, describe(inc),
+				inc.Road, pk(inc.PK), es(typeES, inc.Type), es(severityES, inc.Severity), describe(inc),
 			})
 		}
 		return tableMsg{view: v, t: table{
@@ -259,4 +259,66 @@ func titleOf(v view, n int, st state) string {
 		return viewNames[v]
 	}
 	return fmt.Sprintf("%s · %d", viewNames[v], n)
+}
+
+// Spanish labels for the contract values. The JSON keeps the feed's own text
+// (P-04: never invent or translate a contract value); this is presentation, and
+// a person reading a table in Spanish should not be handed "roadworks".
+//
+// An unknown value falls through to the original, which is the honest failure:
+// a new feed value shows up in English instead of disappearing behind a guess.
+var (
+	typeES = map[string]string{
+		"roadworks":                         "obras",
+		"obstruction":                       "obstrucción",
+		"restriction":                       "restricción",
+		"event":                             "evento",
+		"weather":                           "meteorología",
+		"accident":                          "accidente",
+		"congestion":                        "congestión",
+		"abnormalTraffic":                   "tráfico anómalo",
+		"roadOrCarriagewayOrLaneManagement": "gestión de vía",
+		"maintenanceWorks":                  "mantenimiento",
+		"generalObstruction":                "obstrucción",
+		"infrastructureDamage":              "daño en la vía",
+		"environmentalObstruction":          "obstáculo",
+		"publicEvent":                       "evento público",
+	}
+	severityES = map[string]string{
+		"unknown": "desconocida",
+		"low":     "baja",
+		"medium":  "media",
+		"high":    "alta",
+	}
+	subtypeES = map[string]string{
+		"roadworks":                  "obras",
+		"maintenanceWorks":           "mantenimiento",
+		"damagedRoadSurface":         "firme dañado",
+		"damagedRoadsign":            "señal dañada",
+		"rockfalls":                  "desprendimientos",
+		"avalanches":                 "aludes",
+		"flooding":                   "inundación",
+		"snow":                       "nieve",
+		"ice":                        "hielo",
+		"fog":                        "niebla",
+		"rain":                       "lluvia",
+		"wind":                       "viento",
+		"objectOnTheRoad":            "objeto en la calzada",
+		"brokenDownVehicle":          "vehículo averiado",
+		"vehicleOnFire":              "vehículo incendiado",
+		"obstruction":                "obstrucción",
+		"other":                      "otra",
+		"demonstration":              "manifestación",
+		"roadClosed":                 "vía cortada",
+		"laneClosures":               "carriles cerrados",
+		"singleAlternateLineTraffic": "paso alternativo",
+	}
+)
+
+// es translates a contract value for display, falling back to the original.
+func es(m map[string]string, v string) string {
+	if t, ok := m[v]; ok {
+		return t
+	}
+	return v
 }
