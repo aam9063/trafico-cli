@@ -237,13 +237,28 @@ func show(v view) string { return viewNames[v] }
 // footer names only the keys that work in the current state: hinting "r
 // recargar" while loading would be a lie.
 func (m Model) footer() string {
+	// The views are named, not numbered: "1-4" tells a first-time reader
+	// nothing about what is behind each key. The current one is bracketed so
+	// the bar doubles as a position indicator.
+	views := ""
+	for i := 0; i < int(viewCount); i++ {
+		v := view(i)
+		label := fmt.Sprintf("%d %s", i+1, viewNames[v])
+		if v == m.current {
+			label = "[" + label + "]"
+		}
+		if i > 0 {
+			views += "  "
+		}
+		views += label
+	}
 	switch m.states[m.current] {
 	case loading:
-		return "cargando…  ·  1-4 vistas  ·  q salir"
+		return views + "  ·  cargando…  ·  q salir"
 	case failed:
-		return "r reintentar  ·  1-4 vistas  ·  q salir"
+		return views + "  ·  r reintentar  ·  q salir"
 	default:
-		return "1-4 vistas  ·  j/k mover  ·  g/G extremos  ·  r recargar  ·  q salir"
+		return views + "  ·  j/k mover  ·  g/G extremos  ·  r recargar  ·  q salir"
 	}
 }
 
@@ -301,9 +316,9 @@ func describe(inc model.Incident) string {
 		return *inc.RawDescription
 	}
 	if inc.SubtypeRaw != "" && inc.SubtypeRaw != inc.Type {
-		return inc.SubtypeRaw
+		return es(subtypeES, inc.SubtypeRaw)
 	}
-	return inc.Type
+	return es(typeES, inc.Type)
 }
 
 // Run starts the interface. It blocks until the user quits.
