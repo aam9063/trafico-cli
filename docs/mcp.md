@@ -43,6 +43,23 @@ de tu shell.
 El binario ya instalado es todo lo que hace falta: el servidor no abre puerto ni pid, escribe el
 protocolo en stdout y lee en stdin (diagnósticos solo en stderr, P-01).
 
+### Si tu cliente tiene CLI, es una línea
+
+| Cliente | Comando |
+| --- | --- |
+| Claude Code | `claude mcp add trafico --scope user -- trafico mcp` |
+| Codex CLI | `codex mcp add trafico -- trafico mcp` (escribe `~/.codex/config.toml`) |
+| Gemini CLI | `gemini mcp add -s user trafico trafico mcp` |
+| VS Code / Copilot | `code --add-mcp '{"name":"trafico","command":"trafico","args":["mcp"]}'` |
+
+En Claude Code, `claude mcp list` debe responder `trafico: trafico mcp - ✔ Connected`: esa marca sale de
+un handshake real contra el binario, así que si dice Connected el servidor arranca y contesta.
+
+El resto de los clientes se configura con el JSON de abajo.
+
+Todos comparten la misma forma, y VS Code es la excepción al nombre de la clave: su
+`.vscode/mcp.json` usa `servers`, no `mcpServers`.
+
 ### Claude Desktop
 
 `claude_desktop_config.json`:

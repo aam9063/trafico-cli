@@ -174,7 +174,19 @@ npx @modelcontextprotocol/inspector trafico mcp
 
 ### Connect your client
 
-Claude Desktop (`claude_desktop_config.json`) and Cursor (`~/.cursor/mcp.json`):
+Some clients take one line and write their own config; the rest need the JSON. Pick yours:
+
+| Client | Command |
+|---|---|
+| Claude Code | `claude mcp add trafico --scope user -- trafico mcp` |
+| Codex CLI | `codex mcp add trafico -- trafico mcp` (writes `~/.codex/config.toml`) |
+| Gemini CLI | `gemini mcp add -s user trafico trafico mcp` |
+| VS Code / Copilot | `code --add-mcp '{"name":"trafico","command":"trafico","args":["mcp"]}'` |
+| Claude Desktop | JSON below, in `claude_desktop_config.json` |
+| Cursor | JSON below, in `~/.cursor/mcp.json` |
+| Pi | `~/.pi/agent/mcp.json` (user) or `.pi/mcp.json` (project, after trust); `pi mcp list` validates it |
+
+The JSON those last three take is the same everywhere:
 
 ```json
 {
@@ -184,12 +196,12 @@ Claude Desktop (`claude_desktop_config.json`) and Cursor (`~/.cursor/mcp.json`):
 }
 ```
 
-Pi reads `~/.pi/agent/mcp.json` (user level) or `.pi/mcp.json` (project level, after project trust) with
-the same shape; validate it with `pi mcp list`. Tools appear as `mcp__trafico__<tool>`.
+VS Code is the exception to the key name: its `.vscode/mcp.json` uses `servers`, not `mcpServers`.
 
-On Windows the config's `command` may need the full path, `C:\\Users\\<you>\\.local\\bin\\trafico.exe`.
-Nothing listens on a port: the server speaks the protocol on stdin/stdout and keeps diagnostics on
-stderr, so it never pollutes a response (P-01).
+On Windows the config's `command` may need the full path, `C:\\Users\\<you>\\.local\\bin\\trafico.exe`,
+because an MCP client does not always inherit the `PATH` of your shell. Nothing listens on a port: the
+server speaks the protocol on stdin/stdout and keeps diagnostics on stderr, so it never pollutes a
+response (P-01).
 
 More detail, per-tool arguments included: [docs/mcp.md](docs/mcp.md).
 
