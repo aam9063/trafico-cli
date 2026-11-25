@@ -13,8 +13,16 @@ Antes de enredarte con configuraciones de cliente, comprueba que el servidor con
 conduce una sesión real por stdio y pide la lista de herramientas:
 
 ```bash
-printf '%s
-'   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}'   '{"jsonrpc":"2.0","method":"notifications/initialized"}'   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | trafico mcp
+# Las pausas importan: el servidor termina cuando se cierra stdin, y lo que se
+# escriba antes de que escuche se pierde.
+(
+  echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}'
+  sleep 1
+  echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+  sleep 1
+  echo '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+  sleep 1
+) | trafico mcp
 ```
 
 Si sale un `result.tools` con seis nombres, el binario está bien y lo que falte es la configuración del

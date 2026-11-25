@@ -154,10 +154,16 @@ both from the protocol. Saved-route and watch writes stay CLI affairs in v1.
 No agent needed to see it answer. This drives one real session over stdio by hand:
 
 ```bash
-printf '%s\n' \
-  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}' \
-  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | trafico mcp
+# The pauses matter: the server exits when stdin closes, and messages written
+# before it is listening are lost.
+(
+  echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}'
+  sleep 1
+  echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+  sleep 1
+  echo '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+  sleep 1
+) | trafico mcp
 ```
 
 For a clickable version, the MCP Inspector runs any stdio server:
