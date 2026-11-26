@@ -100,10 +100,14 @@ type Model struct {
 
 	// Opening menu: after the banner, the app asks ¿Qué quieres saber? and
 	// only a chosen view plus a province (or an explicit "todas") shows
-	// data. chosen guards it: once a view is picked, the menu is over for
-	// the run, and number keys go back to being view shortcuts.
+	// data. chosen guards it: once a view is picked, number keys go back to
+	// being view shortcuts until esc returns to the menu.
 	menuUp bool
 	chosen bool
+	// fromMenu marks the province search the menu opened, as opposed to
+	// one opened with /: esc there goes back to the menu, and enter with
+	// nothing typed means "todas las provincias" and loads them.
+	fromMenu bool
 }
 
 // tableMsg carries a loaded view back into the UI, so the network never blocks
@@ -126,8 +130,18 @@ func New(cfg *config.Config, fetcher *feeds.Fetcher) Model {
 }
 
 // menuOpen reports whether the opening question is on screen: it opens with
-// the model and closes when a view is chosen, before any data shows.
+// the model, closes when a view is chosen, and opens again on esc.
 func (m Model) menuOpen() bool { return m.menuUp && !m.chosen }
+
+// backToMenu is esc from a view: the opening question again, with the
+// province forgotten, because the menu asks for it again with the next view.
+// Loaded tables stay: picking the same view and province costs no request.
+func (m Model) backToMenu() Model {
+	m.menuUp, m.chosen = true, false
+	m.typing, m.typed, m.fromMenu = false, "", false
+	m.province = ""
+	return m
+}
 
 // Init starts the first load and the opening animation: the scene runs
 // while the first view fetches, the two together, neither blocking the other.
@@ -200,7 +214,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.chosen = true
 				m.current = v
 				m.states[v] = ready
-				m.typing, m.typed = true, ""
+				m.typing, m.typed, m.fromMenu = true, "", true
 				return m, nil
 			}
 			return m, nil
@@ -210,17 +224,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.typing {
 			switch s {
 			case "enter":
-				// An empty query just closes: there is nothing to apply.
+				// An empty query from / just closes: there is nothing to
+				// apply. From the menu it is an answer -- every province --
+				// and the view has nothing on screen yet, so it loads.
 				m.typing = false
-				if m.typed == "" {
+				if m.typed == "" && !m.fromMenu {
 					return m, nil
 				}
+				m.fromMenu = false
 				m.province = m.typed
 				m.typed = ""
 				// Rows on screen were not filtered: reload the current view.
 				m.states[m.current] = loading
 				return m, m.load(m.current)
 			case "esc":
+				// esc is "back": from the search the menu opened, back to the
+				// menu; from a search opened with /, back to the rows.
+				if m.fromMenu {
+					return m.backToMenu(), nil
+				}
 				m.typing, m.typed = false, ""
 				return m, nil
 			case "backspace":
@@ -240,14 +262,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if s == "esc" {
-			// With a filter applied, esc clears it and shows everything again;
-			// without one, esc quits.
-			if m.province != "" {
-				m.province = ""
-				m.states[m.current] = loading
-				return m, m.load(m.current)
-			}
-			return m, tea.Quit
+			// esc is "back", q is "quit": from the rows, back to the menu
+			// to pick another view. The menu itself is the top, so esc there
+			// quits like q.
+			return m.backToMenu(), nil
 		}
 		if s == "q" || s == "ctrl+c" {
 			return m, tea.Quit
@@ -378,14 +396,14 @@ func (m Model) View() string {
 		// The opening question, before any data: the four views, one line
 		// each, and the province field under them ready to be typed into.
 		// Nothing is loading yet -- no request goes out before a view is
-		// chosen -- so there is no status line to show. The banner took the
-		// largest picture that fits; the rows it leaves over are air between
-		// the picture and the question, so the frame meets the bottom edge.
-		tail := append(m.menuLines(), "", m.searchField(m.width-4), "")
-		for pad := m.height - 2 - len(body) - len(tail); pad > 0; pad-- {
+		// chosen -- so there is no status line to show. The menu sits right
+		// under the picture; the rows left over go below everything, so the
+		// frame meets the bottom edge without a hole in the middle.
+		body = append(body, m.menuLines()...)
+		body = append(body, "", m.searchField(m.width-4), "")
+		for len(body) < m.height-2 {
 			body = append(body, "")
 		}
-		body = append(body, tail...)
 		return m.drawFrame(v, body)
 	}
 	// The province field is part of the window, not an overlay: a row inside
@@ -535,16 +553,24 @@ func (m Model) footer() string {
 	}
 	var hints []hint
 	switch {
+	case m.menuOpen():
+		// Nothing loads on the menu: "cargando…" here would be a lie.
+		hints = []hint{{"1-4 elige", 9}, {"q salir", 0}}
 	case m.typing:
 		// The input owns the keys: movement hints would be a lie.
-		hints = []hint{{"escribiendo…", 9}, {"enter aplica", 9}, {"esc cancela", 9}}
+		back := "esc cancela"
+		if m.fromMenu {
+			back = "esc atrás"
+		}
+		hints = []hint{{"escribiendo…", 9}, {"enter aplica", 9}, {back, 9}}
 	case m.states[m.current] == loading:
-		hints = []hint{{"cargando…", 9}, {"q salir", 0}}
+		hints = []hint{{"cargando…", 9}, {"esc atrás", 3}, {"q salir", 0}}
 	case m.states[m.current] == failed:
-		hints = []hint{{"r reintentar", 9}, {"q salir", 0}}
+		hints = []hint{{"r reintentar", 9}, {"esc atrás", 3}, {"q salir", 0}}
 	default:
 		hints = append(hints, hint{"/ provincia", 2})
 		hints = append(hints,
+			hint{"esc atrás", 3},
 			hint{"j/k mover", 5},
 			hint{"g/G extremos", 7},
 			hint{"r recargar", 7},
