@@ -649,6 +649,25 @@ func TestBannerLettersAbovePicture(t *testing.T) {
 	}
 }
 
+// The menu is modal for view keys, but never a trap: quit keys must work
+// on the menu screen too, or the only way out is closing the terminal.
+func TestMenuStillQuits(t *testing.T) {
+	withTrueColor(t)
+	m := newModel()
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd == nil || !m.menuOpen() {
+		t.Fatalf("q on the menu: cmd=%v menuOpen=%v", cmd != nil, m.menuOpen())
+	}
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c on the menu does not quit")
+	}
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("esc on the menu does not quit")
+	}
+}
+
 // The banner spells the whole name, hyphen included, and only appears when it
 // fits: half a block letter is worse than no banner.
 func TestBanner(t *testing.T) {

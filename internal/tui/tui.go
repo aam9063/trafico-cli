@@ -185,6 +185,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the user types goes into the question that matters (¿de qué
 		// provincia?). Anything else is ignored while the menu is up.
 		if m.menuOpen() {
+			// The menu is modal for the view keys and blind to everything
+			// else -- except the exits: a trap with no way out forces the
+			// user to close the terminal, which is not a menu but a lock.
+			if s == "q" || s == "esc" {
+				return m, tea.Quit
+			}
+			if s == "ctrl+c" {
+				return m, tea.Quit
+			}
 			if v := keyOf(s); v != viewCount {
 				m.menuUp = false
 				m.chosen = true
