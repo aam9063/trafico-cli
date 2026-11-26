@@ -405,7 +405,7 @@ func TestTooSmallTerminalHasNoBanner(t *testing.T) {
 	// Colour terminal, but the picture would not fit vertically: nothing is
 	// drawn at the top and the table gets the full frame.
 	withTrueColor(t)
-	small := artBanners[0]
+	small := artBannerCrop[0] // what a data screen draws
 	short := dataChromeRows + len(small.lines) - 1
 	m := chosenView(newModel(), viewIncidents)
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: short})
@@ -426,7 +426,7 @@ func TestTooSmallTerminalHasNoBanner(t *testing.T) {
 
 	// The opening screen has more room to give, but not unlimited: one row
 	// short of the smallest picture plus its furniture, it draws none.
-	nm, _ = newModel().Update(tea.WindowSizeMsg{Width: 100, Height: menuChromeRows + len(small.lines) - 1})
+	nm, _ = newModel().Update(tea.WindowSizeMsg{Width: 100, Height: menuChromeRows + len(artBanners[0].lines) - 1})
 	if menu := nm.(Model); menu.pictureShowing() || strings.Contains(menu.View(), "▀") {
 		t.Fatal("an opening screen too short for the smallest picture drew one")
 	}
@@ -465,7 +465,7 @@ func TestBannerArtUsesSourcePalette(t *testing.T) {
 			source[[3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(bl >> 8)}] = true
 		}
 	}
-	for _, a := range artBanners {
+	for _, a := range everyBannerArt() {
 		for _, c := range drawnColours(a) {
 			if !source[c] {
 				t.Fatalf("the %d-column picture paints %v, a colour the source never had", a.cols, c)
@@ -477,6 +477,12 @@ func TestBannerArtUsesSourcePalette(t *testing.T) {
 // ansiColorRe matches the 24-bit SGR parameters the generator emits, both the
 // foreground form 38;2;r;g;b and the background form 48;2;r;g;b.
 var ansiColorRe = regexp.MustCompile(`(?:38|48);2;(\d+);(\d+);(\d+)`)
+
+// everyBannerArt is every generated picture: the widths of the whole one
+// and the data screens' cut-out. They share one palette.
+func everyBannerArt() []bannerArt {
+	return append(append([]bannerArt{}, artBanners...), artBannerCrop...)
+}
 
 // drawnColours lists every 24-bit colour a picture paints, repeats included.
 func drawnColours(a bannerArt) [][3]uint8 {
@@ -500,7 +506,7 @@ func drawnColours(a bannerArt) [][3]uint8 {
 // (the generator's -colors 48), so flat areas stay flat and edges stay hard.
 func TestBannerArtIsQuantized(t *testing.T) {
 	drawn := map[[3]uint8]bool{}
-	for _, a := range artBanners {
+	for _, a := range everyBannerArt() {
 		for _, c := range drawnColours(a) {
 			drawn[c] = true
 		}
@@ -523,10 +529,16 @@ func TestBannerPictureGeometry(t *testing.T) {
 	if len(artBanners) < 2 {
 		t.Fatalf("%d picture sizes: the banner cannot adapt to the terminal", len(artBanners))
 	}
-	for i, a := range artBanners {
-		if i > 0 && (a.cols <= artBanners[i-1].cols || len(a.lines) < len(artBanners[i-1].lines)) {
+	for i := 1; i < len(artBanners); i++ {
+		a, prev := artBanners[i], artBanners[i-1]
+		if a.cols <= prev.cols || len(a.lines) < len(prev.lines) {
 			t.Fatalf("picture %d (%dx%d) is not larger than the one before it", i, a.cols, len(a.lines))
 		}
+	}
+	if len(artBannerCrop) != 1 {
+		t.Fatalf("%d cut-outs: the data screens draw exactly one", len(artBannerCrop))
+	}
+	for _, a := range everyBannerArt() {
 		if len(a.lines) < 2 {
 			t.Fatalf("the %d-column picture has %d rows: there is nothing to reveal", a.cols, len(a.lines))
 		}
@@ -542,9 +554,9 @@ func TestBannerPictureGeometry(t *testing.T) {
 			}
 		}
 	}
-	small := artBanners[0]
+	small := artBannerCrop[0] // the data screens' picture
 	if small.cols > 80-3 || dataChromeRows+len(small.lines) > 24 {
-		t.Fatalf("the smallest picture (%dx%d) does not fit an 80x24 data screen", small.cols, len(small.lines))
+		t.Fatalf("the data screens' picture (%dx%d) does not fit an 80x24 data screen", small.cols, len(small.lines))
 	}
 
 	// The reveal adds one row per frame, keeps the block's height constant so
@@ -633,10 +645,17 @@ func TestOpeningScreenDrawsTheLargestPictureThatFits(t *testing.T) {
 		t.Fatalf("207x32: letters=%v picture rows=%d, want the name and at least 15 rows", m.lettersShowing(), m.bannerRows())
 	}
 
-	// Once a view is chosen the table needs the rows: the smallest picture.
+	// Once a view is chosen the table needs the rows: a small picture, and
+	// not the whole one shrunk to a smudge but the cut-out of the road and
+	// its cars, drawn at the opening's sharpness.
 	nm, _ = chosenView(newModel(), viewIncidents).Update(tea.WindowSizeMsg{Width: 207, Height: 60})
-	if got := nm.(Model).bannerRows(); got != len(artBanners[0].lines) {
-		t.Fatalf("a data screen draws a %d-row picture, want the smallest (%d rows)", got, len(artBanners[0].lines))
+	data := nm.(Model)
+	data.frame = 99
+	if art, _, _ := data.bannerPlan(); art.cols != artBannerCrop[0].cols || art.lines[0] != artBannerCrop[0].lines[0] {
+		t.Fatalf("a data screen draws the %d-column picture, want the %d-column cut-out", art.cols, artBannerCrop[0].cols)
+	}
+	if v := data.View(); !strings.Contains(v, artBannerCrop[0].lines[len(artBannerCrop[0].lines)-1]) {
+		t.Fatal("the data screen does not draw the cut-out")
 	}
 
 	// A big terminal does not get a bigger picture than a header: 88x18 at

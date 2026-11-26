@@ -13,8 +13,13 @@ package tui
 // given, so one fixed size is wrong everywhere: on 80 columns it must be
 // small, on a wide monitor the same small picture is a smudge. The opening
 // screen draws the largest width that fits, up to 88x18: past that the
-// picture stops being a header and buries the menu under it. The data
-// screens keep the smallest, because there the table is the point.
+// picture stops being a header and buries the menu under it.
+//
+// The data screens keep a small picture, because there the table is the
+// point -- but not the whole picture shrunk: at 44 columns every cell would
+// average twice the pixels the opening's cells do, and the cars turn to
+// smudges. They get a cut-out of the road and its cars instead, drawn at
+// the opening's sharpness and with the same palette.
 //
 // The name and the tagline are deliberately NOT in the picture: a baked
 // pixel font turns to mush, and the terminal spells both better than an
@@ -39,9 +44,11 @@ import (
 //
 // Regenerate every width with `go generate ./internal/tui` after changing
 // the picture; the directive is the whole pipeline, so the flags that matter
-// (the widths and the palette) are recorded next to what they produce.
+// (the widths, the crop and the palette) are recorded next to what they
+// produce. artBannerCrop is the data screens' cut-out: one width only.
 //
 //go:generate go run ../../tools/img2blocks.go -in ../../assets/banner/banner.png -out banner_gen.go -var artBanners -cols 44,63,73,88 -colors 48 -cover 0.5
+//go:generate go run ../../tools/img2blocks.go -in ../../assets/banner/banner.png -out banner_crop_gen.go -var artBannerCrop -cols 44 -crop 177,60,749,294 -colors 48 -cover 0.5
 type bannerArt struct {
 	cols  int
 	lines []string
@@ -100,7 +107,7 @@ func (m Model) bannerPlan() (art bannerArt, letters, ok bool) {
 	}
 	inner := m.width - 3
 	if !m.menuOpen() {
-		small := artBanners[0]
+		small := artBannerCrop[0]
 		need := dataChromeRows + len(small.lines)
 		if small.cols > inner || m.height < need {
 			return bannerArt{}, false, false
