@@ -12,8 +12,9 @@ package tui
 // The picture comes in several widths. Detail is bounded by the cells it is
 // given, so one fixed size is wrong everywhere: on 80 columns it must be
 // small, on a wide monitor the same small picture is a smudge. The opening
-// screen, which has nothing else to show, draws the largest width that fits;
-// the data screens keep the smallest, because there the table is the point.
+// screen draws the largest width that fits, up to 88x18: past that the
+// picture stops being a header and buries the menu under it. The data
+// screens keep the smallest, because there the table is the point.
 //
 // The name and the tagline are deliberately NOT in the picture: a baked
 // pixel font turns to mush, and the terminal spells both better than an
@@ -40,7 +41,7 @@ import (
 // the picture; the directive is the whole pipeline, so the flags that matter
 // (the widths and the palette) are recorded next to what they produce.
 //
-//go:generate go run ../../tools/img2blocks.go -in ../../assets/banner/banner.png -out banner_gen.go -var artBanners -cols 44,63,73,88,117,150 -colors 48 -cover 0.5
+//go:generate go run ../../tools/img2blocks.go -in ../../assets/banner/banner.png -out banner_gen.go -var artBanners -cols 44,63,73,88 -colors 48 -cover 0.5
 type bannerArt struct {
 	cols  int
 	lines []string
@@ -51,15 +52,15 @@ type bannerArt struct {
 const bannerTagline = "Consulta incidencias, radares y paneles de la DGT, en tu terminal"
 
 // bannerTick is the gap between two frames of the reveal, one row each: the
-// common opening picture lands in about a second, the largest in about two.
+// common opening picture lands in about a second, the largest in 1.3 s.
 var bannerTick = 70 * time.Millisecond
 
 const (
 	// menuChromeRows is everything on the opening screen besides the name
 	// and the picture: the two borders, the tagline and the blank under it,
 	// the question and its four answers, a blank, the province field and
-	// the blank under it. Whatever the picture leaves over is air between
-	// the picture and the question.
+	// the blank under it. Whatever the picture leaves over goes under all
+	// of it, so the menu sits right below the picture.
 	menuChromeRows = 12
 	// dataChromeRows is what a data screen spends besides the name and the
 	// picture: the eight rows the frame and its furniture take, the tagline
@@ -212,11 +213,18 @@ func maxInt(a, b int) int {
 
 // menuLines draws the opening question and its four answers, in the shape
 // the user asked for: one plain line per view, numbered to be picked with
-// the same number keys the views have always answered to.
+// the same number keys the views have always answered to. Each answer says
+// what is behind it, dimmed so the names stay what the eye reads first; the
+// names are padded to one column so the descriptions line up.
 func (m Model) menuLines() []string {
 	out := []string{styleWarm.Render("¿Qué quieres saber?")}
+	width := 0
+	for _, name := range viewNames {
+		width = max(width, len([]rune(name)))
+	}
 	for i, name := range viewNames {
-		out = append(out, fmt.Sprintf("%d.%s", i+1, name))
+		label := fmt.Sprintf("%d.%-*s", i+1, width, name)
+		out = append(out, label+"   "+styleDim.Render(viewBlurbs[i]))
 	}
 	return out
 }
