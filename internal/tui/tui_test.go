@@ -277,18 +277,21 @@ func TestFrameIsExactlyTerminalWidth(t *testing.T) {
 	// included, whether the picture fits or the terminal is under its 80
 	// columns and nothing is drawn at all.
 	withTrueColor(t)
-	for _, w := range []int{40, 76, 79, 80, 96, 100, 140} {
-		for f := 0; f < bannerFrames; f++ {
-			mm := frameTable(New(nil, nil))
-			mm.frame = f
-			nm, _ := mm.Update(tea.WindowSizeMsg{Width: w, Height: 24})
-			mm = nm.(Model)
-			for i, line := range splitLines(mm.View()) {
-				if !strings.HasPrefix(line, "╭") && !strings.HasPrefix(line, "│") && !strings.HasPrefix(line, "╰") {
-					continue
-				}
-				if got := ansi.StringWidth(line); got != w {
-					t.Fatalf("width %d frame %d line %d has %d cells: %q", w, f, i, got, line)
+	maxFrames := len(artBanners[len(artBanners)-1].lines)
+	for _, w := range []int{40, 76, 79, 80, 96, 100, 140, 210} {
+		for _, h := range []int{24, 32, 45} {
+			for f := 0; f < maxFrames; f++ {
+				mm := frameTable(New(nil, nil))
+				mm.frame = f
+				nm, _ := mm.Update(tea.WindowSizeMsg{Width: w, Height: h})
+				mm = nm.(Model)
+				for i, line := range splitLines(mm.View()) {
+					if !strings.HasPrefix(line, "╭") && !strings.HasPrefix(line, "│") && !strings.HasPrefix(line, "╰") {
+						continue
+					}
+					if got := ansi.StringWidth(line); got != w {
+						t.Fatalf("%dx%d frame %d line %d has %d cells: %q", w, h, f, i, got, line)
+					}
 				}
 			}
 		}
@@ -307,6 +310,7 @@ func TestBannerAnimationMovesAndStops(t *testing.T) {
 		t.Fatal("a fresh model on a wide terminal is not animating")
 	}
 
+	bannerFrames := m.bannerFrames()
 	frames := make([]string, bannerFrames)
 	for f := 0; f < bannerFrames; f++ {
 		mm := m
@@ -343,14 +347,16 @@ func TestTooSmallTerminalHasNoBanner(t *testing.T) {
 	// Colour terminal, but the picture would not fit vertically: nothing is
 	// drawn at the top and the table gets the full frame.
 	withTrueColor(t)
-	m := newModel()
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 21})
+	small := artBanners[0]
+	short := dataChromeRows + len(small.lines) - 1
+	m := chosenView(newModel(), viewIncidents)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: short})
 	m = nm.(Model)
 	if m.pictureShowing() || m.artShowing() {
 		t.Fatal("a colour terminal too short for the picture must drop the banner entirely")
 	}
-	if got := m.visibleRows(); got != 21-8 {
-		t.Fatalf("visible rows = %d, want the full %d", got, 21-8)
+	if got := m.visibleRows(); got != short-8 {
+		t.Fatalf("visible rows = %d, want the full %d", got, short-8)
 	}
 	if v := m.View(); strings.Contains(v, "▀") || strings.Contains(v, "____") {
 		t.Fatal("a small terminal drew a banner:\n" + v)
@@ -358,6 +364,13 @@ func TestTooSmallTerminalHasNoBanner(t *testing.T) {
 	nm, cmd := m.Update(bannerTickMsg{})
 	if cmd != nil || nm.(Model).frame != 0 || nm.(Model).bannerAnimating() {
 		t.Fatal("a terminal with no picture must not animate")
+	}
+
+	// The opening screen has more room to give, but not unlimited: one row
+	// short of the smallest picture plus its furniture, it draws none.
+	nm, _ = newModel().Update(tea.WindowSizeMsg{Width: 100, Height: menuChromeRows + len(small.lines) - 1})
+	if menu := nm.(Model); menu.pictureShowing() || strings.Contains(menu.View(), "▀") {
+		t.Fatal("an opening screen too short for the smallest picture drew one")
 	}
 
 	// And the classic small case: too narrow for the name at all, whatever
@@ -372,18 +385,11 @@ func TestTooSmallTerminalHasNoBanner(t *testing.T) {
 	}
 }
 
-// The generated picture is exactly what the frame will draw: every row as
-// wide as the tool was asked for, every row carrying something, and narrow
-// enough for the smallest terminal the gate lets through. A row one cell over
-// would break the frame open; a blank row would make two frames of the reveal
-// identical and the animation would look stuck.
-// The source is flat-colour pixel art: every colour the picture shows exists
-// in the PNG. Averaging a 10x10-pixel block invents intermediate colours (mud
-// blending a car into the road), so the generated art must only paint with
-// colours the source itself carries, up to a small tolerance for the
-// antialiased edges of the original image.
+// The art only ever paints colours the source PNG itself carries. Averaging a
+// block of pixels invents in-between colours -- mud blending a car into the
+// road -- so the generator reduces the source to a palette of its own
+// colours and every half-cell takes one of them, verbatim.
 func TestBannerArtUsesSourcePalette(t *testing.T) {
-	withTrueColor(t)
 	f, err := os.Open("../../assets/banner/banner.png")
 	if err != nil {
 		t.Fatalf("open the source picture: %v", err)
@@ -393,74 +399,20 @@ func TestBannerArtUsesSourcePalette(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode the source picture: %v", err)
 	}
-
-	// The palette the source carries: every distinct opaque colour, counted
-	// so a stray antialiasing pixel can be told from a real flat fill.
-	counts := map[[3]uint8]int{}
+	source := map[[3]uint8]bool{}
 	b := src.Bounds()
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			r, g, bl, a := src.At(x, y).RGBA()
-			if a == 0 {
-				continue
-			}
-			counts[[3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(bl >> 8)}]++
+			r, g, bl, _ := src.At(x, y).RGBA()
+			source[[3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(bl >> 8)}] = true
 		}
 	}
-	palette := map[[3]uint8]bool{}
-	for c, n := range counts {
-		if n >= 16 { // a flat fill repeats; an edge pixel does not
-			palette[c] = true
-		}
-	}
-	if len(palette) < 4 {
-		t.Fatalf("the source palette collapsed to %d colours: the fixture is wrong", len(palette))
-	}
-
-	// Every drawn colour in the art must be one the source carries (within
-	// a small tolerance for rounding), not an invented average.
-	near := func(a, b [3]uint8) bool {
-		d := 0
-		for i := range a {
-			delta := int(a[i]) - int(b[i])
-			if delta < 0 {
-				delta = -delta
-			}
-			if delta > d {
-				d = delta
-			}
-			if delta > 12 {
-				return false
+	for _, a := range artBanners {
+		for _, c := range drawnColours(a) {
+			if !source[c] {
+				t.Fatalf("the %d-column picture paints %v, a colour the source never had", a.cols, c)
 			}
 		}
-		return d <= 12
-	}
-	offenders := 0
-	for _, line := range bannerArtLines {
-		for _, m := range ansiColorRe.FindAllStringSubmatch(line, -1) {
-			var c [3]uint8
-			for i := 0; i < 3; i++ {
-				n, _ := strconv.Atoi(m[1+i])
-				c[i] = uint8(n)
-			}
-			decided := false
-			if near(c, [3]uint8{40, 44, 52}) {
-				decided = true
-			} else {
-				for p := range palette {
-					if near(c, p) {
-						decided = true
-						break
-					}
-				}
-			}
-			if !decided {
-				offenders++
-			}
-		}
-	}
-	if offenders > 0 {
-		t.Fatalf("%d drawn colours are averages the source never had: regenerate with palette snapping", offenders)
 	}
 }
 
@@ -468,91 +420,175 @@ func TestBannerArtUsesSourcePalette(t *testing.T) {
 // foreground form 38;2;r;g;b and the background form 48;2;r;g;b.
 var ansiColorRe = regexp.MustCompile(`(?:38|48);2;(\d+);(\d+);(\d+)`)
 
-// A soft (antialiased) source carries hundreds of near-identical fills: the
-// top two here differ by one blue step. Painting every half-cell with its own
-// slightly-different blue is what reads as blur. The generator must
-// quantize: merge near-identical colours into families and keep only the
-// dominant ones, so the drawn art posterizes into crisp bands.
-func TestBannerArtIsQuantized(t *testing.T) {
-	withTrueColor(t)
-	drawn := map[string]bool{}
-	for _, line := range bannerArtLines {
+// drawnColours lists every 24-bit colour a picture paints, repeats included.
+func drawnColours(a bannerArt) [][3]uint8 {
+	var out [][3]uint8
+	for _, line := range a.lines {
 		for _, m := range ansiColorRe.FindAllStringSubmatch(line, -1) {
-			drawn[m[1]+","+m[2]+","+m[3]] = true
+			var c [3]uint8
+			for i := 0; i < 3; i++ {
+				n, _ := strconv.Atoi(m[1+i])
+				c[i] = uint8(n)
+			}
+			out = append(out, c)
 		}
 	}
-	if len(drawn) > 10 {
-		t.Fatalf("the art paints %d distinct colours: a soft source quantizes to the 10 dominant families", len(drawn))
+	return out
+}
+
+// The source is an antialiased illustration with tens of thousands of
+// near-identical colours; painting every half-cell with its own slightly
+// different blue is what reads as blur. Every width shares one small palette
+// (the generator's -colors 48), so flat areas stay flat and edges stay hard.
+func TestBannerArtIsQuantized(t *testing.T) {
+	drawn := map[[3]uint8]bool{}
+	for _, a := range artBanners {
+		for _, c := range drawnColours(a) {
+			drawn[c] = true
+		}
+	}
+	if len(drawn) > 48 {
+		t.Fatalf("the pictures paint %d distinct colours, more than the 48 of the palette", len(drawn))
+	}
+	if len(drawn) < 16 {
+		t.Fatalf("the pictures paint only %d colours: the palette collapsed", len(drawn))
 	}
 }
 
+// Every generated picture is exactly what the frame will draw: every row as
+// wide as its declared width, every row painted, the widths ascending so the
+// largest that fits is the last one that fits. A row one cell over would
+// break the frame open; an unpainted row would make two frames of the reveal
+// identical and the animation would look stuck.
 func TestBannerPictureGeometry(t *testing.T) {
 	withTrueColor(t)
-	if bannerArtRows < 2 {
-		t.Fatalf("the picture has %d rows: there is nothing to reveal", bannerArtRows)
+	if len(artBanners) < 2 {
+		t.Fatalf("%d picture sizes: the banner cannot adapt to the terminal", len(artBanners))
 	}
-	for i, line := range bannerArtLines {
-		if got := ansi.StringWidth(line); got > bannerArtCols {
-			t.Fatalf("row %d is %d cells, wider than the picture's %d", i, got, bannerArtCols)
+	for i, a := range artBanners {
+		if i > 0 && (a.cols <= artBanners[i-1].cols || len(a.lines) < len(artBanners[i-1].lines)) {
+			t.Fatalf("picture %d (%dx%d) is not larger than the one before it", i, a.cols, len(a.lines))
 		}
-		if strings.TrimSpace(ansi.Strip(line)) == "" {
-			t.Fatalf("row %d of the picture is blank", i)
+		if len(a.lines) < 2 {
+			t.Fatalf("the %d-column picture has %d rows: there is nothing to reveal", a.cols, len(a.lines))
+		}
+		for r, line := range a.lines {
+			if got := ansi.StringWidth(line); got != a.cols {
+				t.Fatalf("the %d-column picture's row %d is %d cells", a.cols, r, got)
+			}
+			if !ansiColorRe.MatchString(line) {
+				t.Fatalf("the %d-column picture's row %d paints nothing", a.cols, r)
+			}
+			if !strings.HasSuffix(line, "\x1b[0m") {
+				t.Fatalf("the %d-column picture's row %d does not reset: its colour bleeds into the frame", a.cols, r)
+			}
 		}
 	}
-	if bannerArtCols > 80-3 {
-		t.Fatalf("the picture is %d cells wide and does not fit the 80-column frame", bannerArtCols)
+	small := artBanners[0]
+	if small.cols > 80-3 || dataChromeRows+len(small.lines) > 24 {
+		t.Fatalf("the smallest picture (%dx%d) does not fit an 80x24 data screen", small.cols, len(small.lines))
 	}
 
 	// The reveal adds one row per frame, keeps the block's height constant so
-	// the table never jumps, and ends with the picture whole.
+	// the menu never jumps, and ends with the picture whole.
 	m := newModel()
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = nm.(Model)
-	for f := 0; f < bannerFrames; f++ {
+	art, _, _ := m.bannerPlan()
+	rows := m.bannerRows()
+	for f := 0; f < m.bannerFrames(); f++ {
 		mm := m
 		mm.frame = f
-		want := f + 1
-		if want > bannerArtRows {
-			want = bannerArtRows
-		}
+		want := min(f+1, rows)
 		if got := mm.bannerRevealRows(); got != want {
 			t.Fatalf("frame %d reveals %d rows, want %d", f, got, want)
 		}
-		if got := len(mm.sceneLines()); got != bannerArtRows {
-			t.Fatalf("frame %d draws %d rows: the block must keep its height", f, got)
+		scene := mm.sceneLines()
+		if len(scene) != rows {
+			t.Fatalf("frame %d draws %d rows: the block must keep its height", f, len(scene))
 		}
-		// The rows the reveal has reached are padded back out to the
-		// picture's own width, so the block is square at its edges instead
-		// of ragged where the generator trimmed trailing spaces.
-		width := -1
-		for i, line := range mm.sceneLines() {
+		for i, line := range scene {
 			if i >= want {
 				if line != "" {
 					t.Fatalf("frame %d draws row %d before the reveal reaches it", f, i)
 				}
 				continue
 			}
-			got := ansi.StringWidth(line)
-			if width < 0 {
-				width = got
-			}
-			if got != width || got < bannerArtCols {
-				t.Fatalf("frame %d row %d is %d cells, want the block's %d", f, i, got, width)
+			// Centred: the left pad plus the picture's own width.
+			if got, want := ansi.StringWidth(line), (100-3-art.cols)/2+art.cols; got != want {
+				t.Fatalf("frame %d row %d is %d cells, want %d", f, i, got, want)
 			}
 		}
 	}
 
-	// The canonical 80x24 terminal still gets the picture, and the tagline
-	// sits under it: those words are the only place the banner promises
-	// anything, so they have to be on the screen with the art.
-	nm, _ = New(nil, nil).Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	small := nm.(Model)
-	if !small.pictureShowing() {
-		t.Fatal("80x24 must show the picture")
+	// The canonical 80x24 terminal still gets the picture, on the opening
+	// screen and on a data screen, and the tagline sits under it: those
+	// words are the only place the banner promises anything.
+	for _, screen := range []Model{newModel(), chosenView(newModel(), viewIncidents)} {
+		nm, _ = screen.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+		s := nm.(Model)
+		if !s.pictureShowing() {
+			t.Fatalf("80x24 (menu=%v) must show the picture", s.menuOpen())
+		}
+		s.frame = s.bannerFrames() - 1
+		if v := s.View(); !strings.Contains(v, bannerTagline) {
+			t.Fatalf("the picture is up but the tagline is missing:\n%s", v)
+		}
 	}
-	small.frame = bannerFrames - 1
-	if v := small.View(); !strings.Contains(v, bannerTagline) {
-		t.Fatalf("the picture is up but the tagline is missing:\n%s", v)
+}
+
+// The opening screen has nothing else to show, so it draws the largest
+// picture the terminal holds -- the name above it whenever both fit -- and
+// spends any rows left over as air, so the frame always meets the bottom
+// edge and never runs past it. A data screen keeps the smallest picture: there
+// the table is the point.
+func TestOpeningScreenDrawsTheLargestPictureThatFits(t *testing.T) {
+	withTrueColor(t)
+	for _, w := range []int{80, 100, 120, 150, 207} {
+		for h := 20; h <= 60; h++ {
+			nm, _ := newModel().Update(tea.WindowSizeMsg{Width: w, Height: h})
+			m := nm.(Model)
+			if got := len(splitLines(m.View())); got != h {
+				t.Fatalf("%dx%d: the opening screen is %d rows, want the terminal's %d", w, h, got, h)
+			}
+			if !m.pictureShowing() {
+				continue
+			}
+			art, letters, _ := m.bannerPlan()
+			room := h - menuChromeRows
+			if letters {
+				room -= artRows
+			}
+			for _, bigger := range artBanners {
+				if bigger.cols > art.cols && bigger.cols <= w-3 && len(bigger.lines) <= room {
+					t.Fatalf("%dx%d draws the %d-column picture, but the %d-column one fits", w, h, art.cols, bigger.cols)
+				}
+			}
+		}
+	}
+
+	// The reporter's terminal, 207x32: the name and a picture nearly twice
+	// the eight rows the banner used to have.
+	nm, _ := newModel().Update(tea.WindowSizeMsg{Width: 207, Height: 32})
+	m := nm.(Model)
+	if !m.lettersShowing() || m.bannerRows() < 15 {
+		t.Fatalf("207x32: letters=%v picture rows=%d, want the name and at least 15 rows", m.lettersShowing(), m.bannerRows())
+	}
+
+	// Once a view is chosen the table needs the rows: the smallest picture.
+	nm, _ = chosenView(newModel(), viewIncidents).Update(tea.WindowSizeMsg{Width: 207, Height: 60})
+	if got := nm.(Model).bannerRows(); got != len(artBanners[0].lines) {
+		t.Fatalf("a data screen draws a %d-row picture, want the smallest (%d rows)", got, len(artBanners[0].lines))
+	}
+}
+
+// The opening screen asks a question; it does not claim to be loading
+// anything, because nothing is: no request goes out before a view is chosen.
+func TestOpeningScreenDoesNotClaimToLoad(t *testing.T) {
+	withTrueColor(t)
+	nm, _ := newModel().Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if v := ansi.Strip(nm.(Model).View()); strings.Contains(v, viewLoading[viewIncidents]) {
+		t.Fatalf("the opening screen says it is loading:\n%s", v)
 	}
 }
 
@@ -695,6 +731,36 @@ func TestBanner(t *testing.T) {
 	nm, _ = wide.Update(tea.WindowSizeMsg{Width: 120, Height: 12})
 	if nm.(Model).banner() {
 		t.Fatal("a 12-row terminal must drop the banner")
+	}
+}
+
+// The block letters spell T-R-A-F-I-C-O - C-L-I, glyph by glyph, in FIGlet's
+// standard font. A C in the fourth slot once shipped as "TRACICO-CLI": every
+// glyph is pinned here so a misspelt name cannot pass for block letters.
+func TestBannerSpellsTheName(t *testing.T) {
+	glyphs := map[rune][5]string{
+		'T': {" _____ ", "|_   _|", "  | |  ", "  | |  ", "  |_|  "},
+		'R': {" ____  ", "|  _ \\ ", "| |_) |", "|  _ < ", "|_| \\_\\"},
+		'A': {"    _    ", "   / \\   ", "  / _ \\  ", " / ___ \\ ", "/_/   \\_\\"},
+		'F': {" _____ ", "|  ___|", "| |_   ", "|  _|  ", "|_|    "},
+		'I': {" ___ ", "|_ _|", " | | ", " | | ", "|___|"},
+		'C': {"  ____ ", " / ___|", "| |    ", "| |___ ", " \\____|"},
+		'O': {"  ___  ", " / _ \\ ", "| | | |", "| |_| |", " \\___/ "},
+		'-': {"       ", " _____ ", "|_____|", "       ", "       "},
+		'L': {" _     ", "| |    ", "| |    ", "| |___ ", "|_____|"},
+	}
+	// The glyphs sit side by side, no kerning.
+	var want [5]string
+	for _, r := range "TRAFICO-CLI" {
+		for row := range want {
+			want[row] += glyphs[r][row]
+		}
+	}
+	got := splitLines(art)
+	for row := range want {
+		if strings.TrimRight(got[row], " ") != strings.TrimRight(want[row], " ") {
+			t.Fatalf("row %d of the name:\n got %q\nwant %q", row, got[row], want[row])
+		}
 	}
 }
 
