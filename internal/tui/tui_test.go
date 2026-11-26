@@ -592,6 +592,45 @@ func TestOpeningMenuFlow(t *testing.T) {
 	}
 }
 
+// Like the reference UI: the name sits above the picture on a colour
+// terminal too, spelled by the block letters, not baked into the pixels. A
+// terminal too short for both keeps the picture alone: half a name is no
+// name.
+func TestBannerLettersAbovePicture(t *testing.T) {
+	withTrueColor(t)
+	m := newModel()
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 33})
+	m = nm.(Model)
+	if !m.pictureShowing() || !m.lettersShowing() {
+		t.Fatalf("100x33: picture=%v letters=%v, want both", m.pictureShowing(), m.lettersShowing())
+	}
+	v := ansi.Strip(m.View())
+	letters := strings.Index(v, "|_   _|")
+	tagline := strings.Index(v, bannerTagline)
+	if letters < 0 {
+		t.Fatalf("the name is missing above the picture:\n%s", v)
+	}
+	if tagline < 0 || tagline < letters {
+		t.Fatalf("the name is not above the picture: letters@%d, tagline@%d", letters, tagline)
+	}
+
+	// A terminal tall enough for the picture but not for it plus the name
+	// shows the picture alone rather than squeezing the pair.
+	nm, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 25})
+	m = nm.(Model)
+	if !m.pictureShowing() || m.lettersShowing() {
+		t.Fatalf("100x25: picture=%v letters=%v, want picture only", m.pictureShowing(), m.lettersShowing())
+	}
+
+	// Everything else is unchanged: the province field still rides inside
+	// the frame on both screens.
+	nm, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 33})
+	m = nm.(Model)
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "Provincia") {
+		t.Fatalf("the province field left the frame:\n%s", v)
+	}
+}
+
 // The banner spells the whole name, hyphen included, and only appears when it
 // fits: half a block letter is worse than no banner.
 func TestBanner(t *testing.T) {

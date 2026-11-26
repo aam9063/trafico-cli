@@ -300,6 +300,9 @@ func (m Model) visibleRows() int {
 	rows := m.height - 8
 	if m.pictureShowing() {
 		rows -= bannerBlockRows
+		if m.lettersShowing() {
+			rows -= artRows + 1
+		}
 	} else if m.artShowing() {
 		rows -= artRows + 1
 	}
@@ -344,9 +347,19 @@ func (m Model) View() string {
 	body := []string{}
 	switch {
 	case m.pictureShowing():
+		// Like the reference UI: the name rides above the picture whenever
+		// the terminal is tall enough for both, spelled by the block letters
+		// -- the same letters the no-colour fallback uses, so the name never
+		// has to live inside the pixels.
+		if m.lettersShowing() {
+			body = append(body, lines(styleArt.Render(art))...)
+		}
 		// The picture and the tagline under it, both centred in the frame's
-		// inner width so the borders close over them.
-		body = append(m.sceneLines(), m.taglineLine(), "")
+		// inner width so the borders close over them. Appended into body one
+		// block at a time: append(m.sceneLines(), ...) would build a fresh
+		// slice and silently drop whatever the block above appended.
+		body = append(body, m.sceneLines()...)
+		body = append(body, m.taglineLine(), "")
 	case m.artShowing():
 		// No colour to paint with: the block letters keep the name up.
 		body = append(lines(styleArt.Render(art)), "")

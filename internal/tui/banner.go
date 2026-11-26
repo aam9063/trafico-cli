@@ -71,6 +71,12 @@ var (
 	// entire and the table gets every row back -- a squeezed picture is not a
 	// picture -- but a canonical 80x24 terminal still shows it.
 	bannerMinHeight = 8 + bannerBlockRows + 5
+	// bannerNameExtraHeight is what the name above the picture adds: the
+	// letters and a blank line. Under the pair's gate the terminal keeps
+	// the picture alone -- half a name is no name.
+	bannerNameExtraHeight = artRows + 1
+	// bannerMinHeightWithName is the gate for name + picture together.
+	bannerMinHeightWithName = bannerMinHeight + bannerNameExtraHeight
 )
 
 // bannerTickMsg advances the reveal one row.
@@ -103,6 +109,13 @@ func (m Model) pictureShowing() bool {
 // the picture has no banner at all and its table keeps every row.
 func (m Model) artShowing() bool {
 	return m.banner() && !bannerColorSupport()
+}
+
+// lettersShowing reports whether the name rides above the picture: a colour
+// terminal tall enough for the letters and the picture both, like the
+// reference UI. Too short a terminal keeps the picture alone.
+func (m Model) lettersShowing() bool {
+	return m.pictureShowing() && m.height >= bannerMinHeightWithName
 }
 
 // bannerAnimating reports whether the reveal still has rows to draw: pure
@@ -168,4 +181,14 @@ func (m Model) menuLines() []string {
 		out = append(out, fmt.Sprintf("%d.%s", i+1, name))
 	}
 	return out
+}
+
+// ProbeView exists only for the tmp probe (deleted after the debug).
+func ProbeView(w, h int) string {
+	old := bannerColorProfile
+	bannerColorProfile = func() termenv.Profile { return termenv.TrueColor }
+	defer func() { bannerColorProfile = old }()
+	m := New(nil, nil)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	return nm.(Model).View()
 }
