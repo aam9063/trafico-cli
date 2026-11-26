@@ -36,7 +36,7 @@ import (
 // the directive is the whole pipeline, so the flags that matter (the width
 // and the dark threshold) are recorded next to what they produce.
 //
-//go:generate go run ../../tools/img2blocks.go -in ../../assets/banner/banner.png -out banner_gen.go -const artBanner -cols 76 -bg 40
+//go:generate go run ../../tools/img2blocks.go -in ../../assets/banner/banner.png -out banner_gen.go -const artBanner -cols 76 -bg 40 -max-colors 10 -family-dist 10
 var bannerArtLines = strings.Split(artBanner, "\n")
 
 // bannerArtRows is how many text rows the picture spends. The width comes from
