@@ -18,7 +18,7 @@ notifying a phone when something changes on it.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Data: CC BY](https://img.shields.io/badge/data-CC%20BY-lightgrey)](https://nap.dgt.es/)
 
-![demo](assets/demo.gif)
+![demo](assets/trafico-promo.gif)
 
 ---
 
@@ -148,6 +148,8 @@ questions in natural language instead of shell commands: `incidencias`, `paneles
 `rutas` and `estado_feeds` answer with exactly the `--json` contract, attribution included. The four
 recipes of §6.4 ship as MCP **prompts** and the JSON Schemas as **resources**, so the client discovers
 both from the protocol. Saved-route and watch writes stay CLI affairs in v1.
+
+![MCP demo](assets/trafico-mcp.gif)
 
 ### Try it in two minutes
 
