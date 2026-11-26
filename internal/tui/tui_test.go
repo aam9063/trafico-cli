@@ -104,9 +104,9 @@ func chosenView(m Model, v view) Model {
 	return m
 }
 
-// S8 / TUI-03: `/` opens the search, enter applies the province and esc
-// clears the filter once applied. The opening menu is modal: the tests pick
-// a view first, exactly as a user must.
+// S8 / TUI-03: `/` opens the search and enter applies the province; esc
+// from the rows goes back to the menu, which forgets the filter. The opening
+// menu is modal: the tests pick a view first, exactly as a user must.
 func TestProvinceSearchLifecycle(t *testing.T) {
 	m := press(loaded(chosenView(newModel(), viewIncidents), viewIncidents), "/", "t", "o", "l")
 	if !m.typing {
@@ -125,8 +125,8 @@ func TestProvinceSearchLifecycle(t *testing.T) {
 	}
 
 	m = press(m, "esc")
-	if m.province != "" || m.typing {
-		t.Fatalf("esc did not clear the filter: province=%q searching=%v", m.province, m.typing)
+	if m.province != "" || m.typing || !m.menuOpen() {
+		t.Fatalf("esc did not go back to the menu: province=%q searching=%v menu=%v", m.province, m.typing, m.menuOpen())
 	}
 }
 
@@ -163,7 +163,7 @@ func TestSearchEditing(t *testing.T) {
 }
 
 // The filter reaches the app criteria of every view, never a filter of the
-// TUI's own (S5); esc clears it from the criteria too.
+// TUI's own (S5); esc (back to the menu) clears it from the criteria too.
 func TestFilterPropagatesToCriteria(t *testing.T) {
 	m := press(loaded(chosenView(newModel(), viewIncidents), viewIncidents), "/", "alicante", "enter")
 	m = loaded(m, viewIncidents) // the reload landed; one result row
@@ -193,7 +193,7 @@ func TestFilterPropagatesToCriteria(t *testing.T) {
 
 // Applying the filter reloads the current view; a view loaded under another
 // province reloads on the switch; one already loaded with the same province
-// does not refetch. With no filter, esc quits instead.
+// does not refetch. esc goes back to the menu, never quits.
 func TestViewReloadsOnFilterChange(t *testing.T) {
 	m := loaded(chosenView(newModel(), viewIncidents), viewIncidents)
 	m.states[viewSigns] = ready
@@ -237,11 +237,69 @@ func TestViewReloadsOnFilterChange(t *testing.T) {
 		t.Fatalf("a new filter did not reload the view: province=%q", m.province)
 	}
 
-	// With no filter active, esc quits rather than clearing nothing.
-	m.province = ""
+	// esc is "back", never "quit": from the rows it returns to the menu.
 	m, cmd = send(m, "esc")
-	if cmd == nil || m.typing || m.province != "" {
-		t.Fatal("esc without a filter must quit")
+	if cmd != nil || !m.menuOpen() || m.province != "" {
+		t.Fatalf("esc from a view: cmd=%v menu=%v province=%q, want back to the menu", cmd != nil, m.menuOpen(), m.province)
+	}
+}
+
+// esc goes back one step and q quits, everywhere but inside the search box
+// (where q is a letter). The steps: menu -> province search -> rows. From
+// the rows esc returns to the menu; from the search the menu opened, esc
+// returns to the menu too; from a search opened with /, esc returns to the
+// rows. The menu is the top: esc there quits, as before.
+func TestEscGoesBackAndQQuits(t *testing.T) {
+	withTrueColor(t)
+
+	// Menu -> search -> esc: back on the menu, nothing applied.
+	m := press(newModel(), "3")
+	if !m.typing || m.menuOpen() {
+		t.Fatalf("3 on the menu: typing=%v menu=%v", m.typing, m.menuOpen())
+	}
+	m, cmd := send(m, "esc")
+	if cmd != nil || !m.menuOpen() || m.typing {
+		t.Fatalf("esc in the menu's search: cmd=%v menu=%v typing=%v, want the menu", cmd != nil, m.menuOpen(), m.typing)
+	}
+
+	// Menu -> search -> enter with nothing typed: every province, loaded.
+	m = press(m, "3")
+	m, cmd = send(m, "enter")
+	if cmd == nil || m.states[viewRadars] != loading || m.province != "" {
+		t.Fatalf("empty enter from the menu: cmd=%v state=%v province=%q, want all provinces loading",
+			cmd != nil, m.states[viewRadars], m.province)
+	}
+	m = loaded(m, viewRadars)
+
+	// Rows -> / -> esc: back on the rows, still on the view.
+	m = press(m, "/", "al", "esc")
+	if m.typing || m.menuOpen() || m.current != viewRadars {
+		t.Fatalf("esc in a / search: typing=%v menu=%v view=%d, want the rows", m.typing, m.menuOpen(), m.current)
+	}
+
+	// q on the rows quits; esc on the rows goes back to the menu.
+	if _, cmd := send(m, "q"); cmd == nil {
+		t.Fatal("q on the rows does not quit")
+	}
+	m, cmd = send(m, "esc")
+	if cmd != nil || !m.menuOpen() {
+		t.Fatalf("esc on the rows: cmd=%v menu=%v, want back to the menu", cmd != nil, m.menuOpen())
+	}
+	sized, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if v := ansi.Strip(sized.(Model).View()); !strings.Contains(v, "¿Qué quieres saber?") {
+		t.Fatalf("back on the menu, the question is not drawn:\n%s", v)
+	}
+
+	// Picking again works: another view, its search, its rows.
+	m = press(m, "2", "enter")
+	if m.current != viewSigns || m.menuOpen() || m.states[viewSigns] != loading {
+		t.Fatalf("picking after going back: view=%d menu=%v state=%v", m.current, m.menuOpen(), m.states[viewSigns])
+	}
+
+	// The footer names the way back where there is one.
+	nm, _ := loaded(m, viewSigns).Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+	if f := nm.(Model).footer(); !strings.Contains(f, "esc atrás") || !strings.Contains(f, "q salir") {
+		t.Fatalf("footer on the rows = %q, want esc atrás and q salir", f)
 	}
 }
 
@@ -579,6 +637,53 @@ func TestOpeningScreenDrawsTheLargestPictureThatFits(t *testing.T) {
 	nm, _ = chosenView(newModel(), viewIncidents).Update(tea.WindowSizeMsg{Width: 207, Height: 60})
 	if got := nm.(Model).bannerRows(); got != len(artBanners[0].lines) {
 		t.Fatalf("a data screen draws a %d-row picture, want the smallest (%d rows)", got, len(artBanners[0].lines))
+	}
+
+	// A big terminal does not get a bigger picture than a header: 88x18 at
+	// most, and the menu sits right under it -- the question is the line
+	// after the tagline and its blank, the spare rows go below everything.
+	nm, _ = newModel().Update(tea.WindowSizeMsg{Width: 207, Height: 60})
+	m = nm.(Model)
+	if art, _, _ := m.bannerPlan(); art.cols > 88 || len(art.lines) > 18 {
+		t.Fatalf("207x60 draws a %dx%d picture, want at most 88x18", art.cols, len(art.lines))
+	}
+	rows := splitLines(ansi.Strip(m.View()))
+	tagline, question := -1, -1
+	for i, r := range rows {
+		if strings.Contains(r, bannerTagline) {
+			tagline = i
+		}
+		if strings.Contains(r, "¿Qué quieres saber?") {
+			question = i
+		}
+	}
+	if tagline < 0 || question != tagline+2 {
+		t.Fatalf("207x60: tagline on row %d, question on row %d; want the question two rows under", tagline, question)
+	}
+}
+
+// Each answer on the opening menu says what is behind it, and the
+// descriptions start in one column.
+func TestMenuDescribesEachView(t *testing.T) {
+	withTrueColor(t)
+	nm, _ := newModel().Update(tea.WindowSizeMsg{Width: 140, Height: 40})
+	v := ansi.Strip(nm.(Model).View())
+	col := -1
+	for i, name := range viewNames {
+		line := ""
+		for _, r := range splitLines(v) {
+			if strings.Contains(r, fmt.Sprintf("%d.%s", i+1, name)) {
+				line = r
+			}
+		}
+		at := strings.Index(line, viewBlurbs[i])
+		if at < 0 {
+			t.Fatalf("the menu line for %s has no description:\n%s", name, v)
+		}
+		if col >= 0 && at != col {
+			t.Fatalf("the description of %s starts at byte %d, the others at %d", name, at, col)
+		}
+		col = at
 	}
 }
 

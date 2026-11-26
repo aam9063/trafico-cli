@@ -28,6 +28,16 @@ const (
 // viewNames is the Spanish name of each view, shown in the title bar.
 var viewNames = [viewCount]string{"Incidencias", "Paneles", "Radares", "Tramos"}
 
+// viewBlurbs says in a few words what each view lists, next to its name on
+// the opening menu: "Tramos" alone tells a first-time reader nothing. Each
+// one describes the feed the view reads (docs/feeds.md), nothing more.
+var viewBlurbs = [viewCount]string{
+	"accidentes, obras y otras incidencias en carretera",
+	"mensajes de los paneles de la DGT",
+	"radares fijos de la DGT",
+	"tramos de vigilancia de velocidad intensificada (INVIVE)",
+}
+
 // viewLoading is what the footer says while a view loads.
 var viewLoading = [viewCount]string{
 	"Cargando incidencias…",
