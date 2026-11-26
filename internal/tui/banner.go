@@ -1,19 +1,24 @@
 package tui
 
-// The opening banner: a road at the edge of a city at night, drawn as
-// half-blocks and revealed a row at a time while the first view loads.
+// The opening banner: a road into a city at night, cars heading for the
+// horizon, drawn as half-blocks and revealed a row at a time.
 //
-// The picture is a generated constant (banner_gen.go, made from
+// The picture is generated source (banner_gen.go, made from
 // assets/banner/banner.png by tools/img2blocks.go), so the binary carries no
 // image decoder and what lands in the repository is plain source anyone can
 // read. One terminal cell is two pixels: the top drawn with ▀ in the upper
 // pixel's colour over the lower pixel's colour.
 //
-// The name and the tagline are deliberately NOT in the picture. At 76 columns
-// a baked pixel font turns to mush -- the subtitle of the reference image was
-// the first thing to go -- and the terminal spells both better than an image
-// can: the name in the frame's title and in the block letters below, the
-// tagline as ordinary text in the app's own words, in the app's own colour.
+// The picture comes in several widths. Detail is bounded by the cells it is
+// given, so one fixed size is wrong everywhere: on 80 columns it must be
+// small, on a wide monitor the same small picture is a smudge. The opening
+// screen, which has nothing else to show, draws the largest width that fits;
+// the data screens keep the smallest, because there the table is the point.
+//
+// The name and the tagline are deliberately NOT in the picture: a baked
+// pixel font turns to mush, and the terminal spells both better than an
+// image can -- the name in the block letters above, the tagline as ordinary
+// text in the app's own colour.
 //
 // The picture is 24-bit by construction, so the gate asks for a 24-bit
 // terminal. One that paints only 256 colours is not left without a banner: it
@@ -29,54 +34,39 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// bannerArtLines is the generated picture split once at load: the constant is
-// one string and the frame wants one line per row.
+// bannerArt is the picture at one width: every line exactly cols cells.
 //
-// Regenerate it with `go generate ./internal/tui` after changing the picture;
-// the directive is the whole pipeline, so the flags that matter (the width
-// and the dark threshold) are recorded next to what they produce.
+// Regenerate every width with `go generate ./internal/tui` after changing
+// the picture; the directive is the whole pipeline, so the flags that matter
+// (the widths and the palette) are recorded next to what they produce.
 //
-//go:generate go run ../../tools/img2blocks.go -in ../../assets/banner/banner.png -out banner_gen.go -const artBanner -cols 76 -bg 40 -max-colors 10 -family-dist 10
-var bannerArtLines = strings.Split(artBanner, "\n")
-
-// bannerArtRows is how many text rows the picture spends. The width comes from
-// the generated file: every row has its trailing spaces trimmed, so the
-// picture's width cannot be read off the art itself.
-var (
-	bannerArtRows = len(bannerArtLines)
-	bannerArtCols = artBannerCols
-)
+//go:generate go run ../../tools/img2blocks.go -in ../../assets/banner/banner.png -out banner_gen.go -var artBanners -cols 44,63,73,88,117,150 -colors 48 -cover 0.5
+type bannerArt struct {
+	cols  int
+	lines []string
+}
 
 // bannerTagline says what the tool does, in the app's own words. It is text
 // rather than pixels on purpose: see the note at the top of this file.
 const bannerTagline = "Consulta incidencias, radares y paneles de la DGT, en tu terminal"
 
-// Animation pacing and picture size.
-var (
-	// bannerFrames is how many steps the reveal takes: one new row per frame,
-	// the last frame showing the picture whole. Deriving it from the picture
-	// keeps every frame visibly different from the one before.
-	bannerFrames = bannerArtRows
-	// bannerTick is the gap between two frames: the whole reveal is roughly a
-	// second, the same feeling as the startup animation the reference had.
-	bannerTick = 110 * time.Millisecond
-	// bannerBlockRows is what the picture costs the table: its own rows, the
-	// tagline under them and the blank line that separates the block from the
-	// province field. Reserved from the first frame, so nothing jumps when
-	// the reveal finishes.
-	bannerBlockRows = bannerArtRows + 2
-	// bannerMinHeight is how tall a colour terminal must be for the picture:
-	// the eight rows the frame and its furniture take, the block above, and
-	// five rows the table keeps for itself. Under this the banner is dropped
-	// entire and the table gets every row back -- a squeezed picture is not a
-	// picture -- but a canonical 80x24 terminal still shows it.
-	bannerMinHeight = 8 + bannerBlockRows + 5
-	// bannerNameExtraHeight is what the name above the picture adds: the
-	// letters and a blank line. Under the pair's gate the terminal keeps
-	// the picture alone -- half a name is no name.
-	bannerNameExtraHeight = artRows + 1
-	// bannerMinHeightWithName is the gate for name + picture together.
-	bannerMinHeightWithName = bannerMinHeight + bannerNameExtraHeight
+// bannerTick is the gap between two frames of the reveal, one row each: the
+// common opening picture lands in about a second, the largest in about two.
+var bannerTick = 70 * time.Millisecond
+
+const (
+	// menuChromeRows is everything on the opening screen besides the name
+	// and the picture: the two borders, the tagline and the blank under it,
+	// the question and its four answers, a blank, the province field and
+	// the blank under it. Whatever the picture leaves over is air between
+	// the picture and the question.
+	menuChromeRows = 12
+	// dataChromeRows is what a data screen spends besides the name and the
+	// picture: the eight rows the frame and its furniture take, the tagline
+	// and its blank, and five rows the table keeps for itself. Under this
+	// the banner is dropped entire and the table gets every row back -- a
+	// squeezed picture is not a picture -- but 80x24 still shows it.
+	dataChromeRows = 8 + 2 + 5
 )
 
 // bannerTickMsg advances the reveal one row.
@@ -98,10 +88,49 @@ var bannerColorProfile = lipgloss.ColorProfile
 // instead of a dithered approximation of a photograph.
 func bannerColorSupport() bool { return bannerColorProfile() == termenv.TrueColor }
 
+// bannerPlan decides what the banner draws on this screen: which picture,
+// and whether the name rides above it. ok is false when no picture fits.
+//
+// The opening screen prefers the name with a smaller picture to a bigger
+// picture without it: the letters are how the tool introduces itself.
+func (m Model) bannerPlan() (art bannerArt, letters, ok bool) {
+	if !m.banner() || !bannerColorSupport() {
+		return bannerArt{}, false, false
+	}
+	inner := m.width - 3
+	if !m.menuOpen() {
+		small := artBanners[0]
+		need := dataChromeRows + len(small.lines)
+		if small.cols > inner || m.height < need {
+			return bannerArt{}, false, false
+		}
+		return small, m.height >= need+artRows+1, true
+	}
+	if a, ok := largestArt(inner, m.height-menuChromeRows-artRows); ok {
+		return a, true, true
+	}
+	if a, ok := largestArt(inner, m.height-menuChromeRows); ok {
+		return a, false, true
+	}
+	return bannerArt{}, false, false
+}
+
+// largestArt is the widest picture no wider than cols and no taller than
+// rows.
+func largestArt(cols, rows int) (bannerArt, bool) {
+	for i := len(artBanners) - 1; i >= 0; i-- {
+		if a := artBanners[i]; a.cols <= cols && len(a.lines) <= rows {
+			return a, true
+		}
+	}
+	return bannerArt{}, false
+}
+
 // pictureShowing reports whether this terminal gets the picture: the room for
 // it, the colour for it, and the frame gate the banner always had.
 func (m Model) pictureShowing() bool {
-	return m.banner() && bannerColorSupport() && m.height >= bannerMinHeight
+	_, _, ok := m.bannerPlan()
+	return ok
 }
 
 // artShowing reports whether the block-letter fallback carries the name: on a
@@ -115,43 +144,52 @@ func (m Model) artShowing() bool {
 // terminal tall enough for the letters and the picture both, like the
 // reference UI. Too short a terminal keeps the picture alone.
 func (m Model) lettersShowing() bool {
-	return m.pictureShowing() && m.height >= bannerMinHeightWithName
+	_, letters, ok := m.bannerPlan()
+	return ok && letters
 }
+
+// bannerRows is how many text rows the picture on this screen spends; zero
+// when none is showing.
+func (m Model) bannerRows() int {
+	art, _, _ := m.bannerPlan()
+	return len(art.lines)
+}
+
+// bannerFrames is how many steps the reveal takes: one new row per frame,
+// the last frame showing the picture whole.
+func (m Model) bannerFrames() int { return m.bannerRows() }
 
 // bannerAnimating reports whether the reveal still has rows to draw: pure
 // model state, readable from Update without a terminal.
 func (m Model) bannerAnimating() bool {
-	return m.pictureShowing() && m.frame < bannerFrames-1
+	return m.pictureShowing() && m.frame < m.bannerFrames()-1
 }
 
 // bannerRevealRows is how many of the picture's rows this frame draws. The
 // last frame draws all of them, and the reveal stops there: the settled
 // picture is the static banner.
 func (m Model) bannerRevealRows() int {
-	if !m.pictureShowing() {
-		return 0
-	}
-	if m.frame >= bannerArtRows {
-		return bannerArtRows
+	rows := m.bannerRows()
+	if m.frame >= rows {
+		return rows
 	}
 	return m.frame + 1
 }
 
-// sceneLines draws the picture into the frame's inner width: every revealed
-// row padded back out to the picture's own width, the whole block centred in
-// whatever room the terminal has beyond it, and the rows the reveal has not
-// reached yet left blank so the block keeps its height from the first frame.
+// sceneLines draws the picture into the frame's inner width: the revealed
+// rows centred in whatever room the terminal has beyond it, and the rows the
+// reveal has not reached yet left blank so the block keeps its height from
+// the first frame.
 func (m Model) sceneLines() []string {
-	inner := m.width - 3
-	pad := strings.Repeat(" ", maxInt(0, (inner-bannerArtCols)/2))
+	art, _, ok := m.bannerPlan()
+	if !ok {
+		return nil
+	}
+	pad := strings.Repeat(" ", maxInt(0, (m.width-3-art.cols)/2))
 	shown := m.bannerRevealRows()
-	out := make([]string, bannerArtRows)
-	for i := 0; i < bannerArtRows; i++ {
-		if i >= shown {
-			continue
-		}
-		tail := strings.Repeat(" ", maxInt(0, bannerArtCols-cells(bannerArtLines[i])))
-		out[i] = pad + bannerArtLines[i] + tail
+	out := make([]string, len(art.lines))
+	for i := 0; i < shown; i++ {
+		out[i] = pad + art.lines[i]
 	}
 	return out
 }
@@ -181,14 +219,4 @@ func (m Model) menuLines() []string {
 		out = append(out, fmt.Sprintf("%d.%s", i+1, name))
 	}
 	return out
-}
-
-// ProbeView exists only for the tmp probe (deleted after the debug).
-func ProbeView(w, h int) string {
-	old := bannerColorProfile
-	bannerColorProfile = func() termenv.Profile { return termenv.TrueColor }
-	defer func() { bannerColorProfile = old }()
-	m := New(nil, nil)
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
-	return nm.(Model).View()
 }
