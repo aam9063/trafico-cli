@@ -50,12 +50,13 @@ var (
 // art is drawn once, at the top, and spells the whole name including the
 // hyphen. Five rows of block letters rather than a huge ASCII logo: in an
 // 80x24 terminal a big picture is the whole screen, and the point of a
-// traffic tool is the traffic.
-const art = ` _____  ____      _      ____  ___   ____   ___           ____  _      ___
-|_   _||  _ \    / \    / ___||_ _| / ___| / _ \  _____  / ___|| |    |_ _|
-  | |  | |_) |  / _ \  | |     | | | |    | | | ||_____|| |    | |     | |
-  | |  |  _ <  / ___ \ | |___  | | | |___ | |_| |       | |___ | |___  | |
-  |_|  |_| \_\/_/   \_\ \____||___| \____| \___/         \____||_____||___|`
+// traffic tool is the traffic. The glyphs are FIGlet's standard font, one
+// per letter of T-R-A-F-I-C-O - C-L-I; TestBannerSpellsTheName pins them.
+const art = ` _____  ____      _     _____  ___   ____   ___           ____  _      ___
+|_   _||  _ \    / \   |  ___||_ _| / ___| / _ \  _____  / ___|| |    |_ _|
+  | |  | |_) |  / _ \  | |_    | | | |    | | | ||_____|| |    | |     | |
+  | |  |  _ <  / ___ \ |  _|   | | | |___ | |_| |       | |___ | |___  | |
+  |_|  |_| \_\/_/   \_\|_|    |___| \____| \___/         \____||_____||___|`
 
 // state is what a view is doing.
 type state int
@@ -148,7 +149,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		// After a resize that makes the picture fit, resume the animation on
 		// the one tick already out the door; never schedule a second one.
-		if m.pictureShowing() && !m.ticking && m.frame < bannerFrames-1 {
+		if m.pictureShowing() && !m.ticking && m.frame < m.bannerFrames()-1 {
 			m.ticking = true
 			return m, tickBanner()
 		}
@@ -158,11 +159,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// One frame per tick. When the frames run out the scene stops: its
 		// last frame is the static banner, and no more Tick is scheduled.
 		m.ticking = false
-		if !m.pictureShowing() || m.frame >= bannerFrames-1 {
+		if !m.pictureShowing() || m.frame >= m.bannerFrames()-1 {
 			return m, nil
 		}
 		m.frame++
-		if m.frame < bannerFrames-1 {
+		if m.frame < m.bannerFrames()-1 {
 			m.ticking = true
 			return m, tickBanner()
 		}
@@ -303,12 +304,12 @@ func (m *Model) move(delta int) {
 // visibleRows is how many table rows fit: the frame, the banner, the column
 // header and the shortcut bar take the rest; the search line takes one more
 // while it is open. Which banner is showing decides how many rows it spends:
-// the picture takes bannerBlockRows (its rows, the tagline, the blank under
-// them), the block letters take the five they always did.
+// the picture takes its rows plus the tagline and the blank under them, the
+// block letters take the five they always did.
 func (m Model) visibleRows() int {
 	rows := m.height - 8
 	if m.pictureShowing() {
-		rows -= bannerBlockRows
+		rows -= m.bannerRows() + 2
 		if m.lettersShowing() {
 			rows -= artRows + 1
 		}
@@ -331,8 +332,8 @@ const artRows = 5 // plus one blank line, counted in the -8
 
 // banner fits when the terminal can hold a banner of some kind (80 columns
 // and 20 rows). Which kind is a second question, pictureShowing and
-// artShowing decide it: the picture also wants colour and bannerMinHeight
-// rows, the block letters only what they always needed. Truncating either
+// artShowing decide it: the picture also wants colour and the rows its
+// screen needs (bannerPlan), the block letters only what they always needed. Truncating either
 // would leave half a scene, so a terminal under the gate drops it and gives
 // the rows back to the table.
 func (m Model) banner() bool { return m.width >= 80 && m.height >= 20 }
@@ -376,9 +377,16 @@ func (m Model) View() string {
 	if m.menuOpen() {
 		// The opening question, before any data: the four views, one line
 		// each, and the province field under them ready to be typed into.
-		body = append(body, "", "", "", "")
-		body = append(body, m.menuLines()...)
-		body = append(body, "", "")
+		// Nothing is loading yet -- no request goes out before a view is
+		// chosen -- so there is no status line to show. The banner took the
+		// largest picture that fits; the rows it leaves over are air between
+		// the picture and the question, so the frame meets the bottom edge.
+		tail := append(m.menuLines(), "", m.searchField(m.width-4), "")
+		for pad := m.height - 2 - len(body) - len(tail); pad > 0; pad-- {
+			body = append(body, "")
+		}
+		body = append(body, tail...)
+		return m.drawFrame(v, body)
 	}
 	// The province field is part of the window, not an overlay: a row inside
 	// the frame, always drawn, so a reader sees where the filter lives before
@@ -406,9 +414,13 @@ func (m Model) View() string {
 		body = append(body, lines(m.render(t, cursor, m.scrolls[v], visible, m.width-4))...)
 	}
 	body = append(body, "") // breathe between the table and the bottom border
+	return m.drawFrame(v, body)
+}
 
-	// Frame assembly. fill keeps every line exactly m.width cells; a text
-	// that does not fit is truncated instead of pushing the border open.
+// drawFrame wraps the body in the window's border. fill keeps every line
+// exactly m.width cells; a text that does not fit is truncated instead of
+// pushing the border open.
+func (m Model) drawFrame(v view, body []string) string {
 	title := titleOf(v, len(m.tables[v].rows), m.states[v], m.province)
 	tw := cells(title)
 	if tw > m.width-5 {
