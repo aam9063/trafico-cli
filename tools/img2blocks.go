@@ -25,6 +25,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -35,6 +36,8 @@ func main() {
 	name := flag.String("const", "artBanner", "name of the generated constant")
 	cols := flag.Int("cols", 76, "width in terminal cells")
 	bgThreshold := flag.Int("bg", 0, "treat pixels darker than this (0-255, every channel) as transparent")
+	maxColors := flag.Int("max-colors", 10, "quantize the source to the N dominant colour families (0 keeps every colour)")
+	familyDist := flag.Int("family-dist", 10, "per-channel distance under which two colours count as one family")
 	flag.Parse()
 	if *in == "" || *out == "" {
 		fmt.Fprintln(os.Stderr, "img2blocks: -in and -out are required")
@@ -54,7 +57,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	art := render(source, *cols, *bgThreshold)
+	art := render(source, *cols, *bgThreshold, *maxColors, *familyDist)
 	// render never widens the picture past the source, so the width the art
 	// really has is the smaller of the two. It has to be emitted: trimming
 	// the trailing spaces leaves every row a different length, and a reader
@@ -98,7 +101,7 @@ func main() {
 // emits one string per text row. Averaging rather than sampling matters: a road
 // with thin lines sampled at 76 columns loses the lines, averaged it keeps a
 // grey band where they were.
-func render(source image.Image, cols, bgThreshold int) []string {
+func render(source image.Image, cols, bgThreshold, maxColors, familyDist int) []string {
 	bounds := source.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	if cols > width {
@@ -116,8 +119,8 @@ func render(source image.Image, cols, bgThreshold int) []string {
 	for row := 0; row < rows; row++ {
 		var line strings.Builder
 		for col := 0; col < cols; col++ {
-			top := snap(source, average(source, bounds, col, row*2, scale))
-			bottom := snap(source, average(source, bounds, col, row*2+1, scale))
+			top := snap(source, maxColors, familyDist, average(source, bounds, col, row*2, scale))
+			bottom := snap(source, maxColors, familyDist, average(source, bounds, col, row*2+1, scale))
 			line.WriteString(cell(top, bottom, bgThreshold))
 		}
 		art = append(art, strings.TrimRight(line.String(), " "))
@@ -125,14 +128,15 @@ func render(source image.Image, cols, bgThreshold int) []string {
 	return art
 }
 
-// paletteOf collects the source's flat fills: every distinct opaque colour
-// that repeats at least minFill times. A flat pixel-art fill repeats; an
-// antialiased edge pixel does not. Snap after averaging, never instead of it:
-// the average keeps the geometry honest (thin lines survive as grey bands),
-// the snap then maps each averaged colour back onto the nearest real colour
-// of the picture, so the art invents no mud the source never had.
-func paletteOf(source image.Image) map[rgb]bool {
-	const minFill = 16
+// paletteOf collects the source's quantized palette: the dominant colour
+// families. A soft (antialiased) source carries hundreds of near-identical
+// fills -- the two most common in the banner PNG differ by one blue step --
+// so raw repetition is meaningless: colours are collapsed into families
+// (identical up to familyDist) greedily from the heaviest, and only the
+// maxColors heaviest families kept. Snap then maps every averaged block onto
+// one of those few real colours, and the art posterizes into crisp bands
+// instead of blurring through a gradient of near-blues.
+func paletteOf(source image.Image, maxColors, familyDist int) map[rgb]bool {
 	counts := map[rgb]int{}
 	b := source.Bounds()
 	for y := b.Min.Y; y < b.Max.Y; y++ {
@@ -144,11 +148,30 @@ func paletteOf(source image.Image) map[rgb]bool {
 			counts[rgb{uint8(r >> 8), uint8(g >> 8), uint8(bl >> 8)}]++
 		}
 	}
-	palette := map[rgb]bool{}
-	for c, n := range counts {
-		if n >= minFill {
-			palette[c] = true
+	flat := make([]rgb, 0, len(counts))
+	for c := range counts {
+		flat = append(flat, c)
+	}
+	sort.Slice(flat, func(i, j int) bool { return counts[flat[i]] > counts[flat[j]] })
+	families := make([]rgb, 0, maxColors)
+	for _, c := range flat {
+		near := false
+		for _, f := range families {
+			if chanMax(f, c) <= familyDist {
+				near = true
+				break
+			}
 		}
+		if !near {
+			families = append(families, c)
+			if len(families) == maxColors {
+				break
+			}
+		}
+	}
+	palette := map[rgb]bool{}
+	for _, f := range families {
+		palette[f] = true
 	}
 	return palette
 }
@@ -156,8 +179,8 @@ func paletteOf(source image.Image) map[rgb]bool {
 // snap maps an averaged colour onto the nearest colour of the source's flat
 // fills, in the usual channel-max distance. A colour the source carries
 // verbatim stays put; only the averages get pulled back onto real colours.
-func snap(source image.Image, c rgb) rgb {
-	palette := paletteOf(source)
+func snap(source image.Image, maxColors, familyDist int, c rgb) rgb {
+	palette := paletteOf(source, maxColors, familyDist)
 	if len(palette) == 0 {
 		return c
 	}

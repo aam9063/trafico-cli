@@ -468,6 +468,24 @@ func TestBannerArtUsesSourcePalette(t *testing.T) {
 // foreground form 38;2;r;g;b and the background form 48;2;r;g;b.
 var ansiColorRe = regexp.MustCompile(`(?:38|48);2;(\d+);(\d+);(\d+)`)
 
+// A soft (antialiased) source carries hundreds of near-identical fills: the
+// top two here differ by one blue step. Painting every half-cell with its own
+// slightly-different blue is what reads as blur. The generator must
+// quantize: merge near-identical colours into families and keep only the
+// dominant ones, so the drawn art posterizes into crisp bands.
+func TestBannerArtIsQuantized(t *testing.T) {
+	withTrueColor(t)
+	drawn := map[string]bool{}
+	for _, line := range bannerArtLines {
+		for _, m := range ansiColorRe.FindAllStringSubmatch(line, -1) {
+			drawn[m[1]+","+m[2]+","+m[3]] = true
+		}
+	}
+	if len(drawn) > 10 {
+		t.Fatalf("the art paints %d distinct colours: a soft source quantizes to the 10 dominant families", len(drawn))
+	}
+}
+
 func TestBannerPictureGeometry(t *testing.T) {
 	withTrueColor(t)
 	if bannerArtRows < 2 {
